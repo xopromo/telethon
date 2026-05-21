@@ -51,8 +51,8 @@ class ContentAgent:
             "gemini": GEMINI_API_KEY,
             "cerebras": CEREBRAS_API_KEY,
         }
-        # Override priority: gemini → cerebras → mistral
-        priority = ["gemini", "cerebras", "mistral"]
+        # Original priority: mistral → gemini → cerebras
+        priority = ["mistral", "gemini", "cerebras"]
         providers_config = [(p, api_key_map[p]) for p in priority]
         self.ai = AIProviderChain(providers_config, "")
 
