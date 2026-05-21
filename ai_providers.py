@@ -1,12 +1,40 @@
 """AI provider implementations with failover support"""
 import logging
+import asyncio
 from abc import ABC, abstractmethod
 import requests
 
 logger = logging.getLogger(__name__)
 
-# Store last working provider
-_last_working_provider = None
+
+class AdaptiveDelay:
+    """Adaptive delay that increases on failure and slowly recovers on success"""
+
+    def __init__(self, initial: float = 3.0, min_delay: float = 3.0, max_delay: float = 120.0):
+        self.current = initial
+        self.min_delay = min_delay
+        self.max_delay = max_delay
+        self.last_success_delay = initial
+
+    async def wait(self):
+        logger.info(f"⏳ Adaptive delay: {self.current:.1f}s")
+        await asyncio.sleep(self.current)
+
+    def on_success(self):
+        """After success: if current delay grew (due to past errors), lock it as new baseline.
+        Then slowly recover downward."""
+        if self.current > self.last_success_delay:
+            # We just recovered after errors — new delay is the new baseline
+            self.last_success_delay = self.current
+            logger.info(f"📈 New baseline delay: {self.last_success_delay:.1f}s")
+        else:
+            # All good — slowly decrease toward min
+            self.current = max(self.min_delay, self.current * 0.85)
+
+    def on_rate_limit(self):
+        """After 429: double the delay"""
+        self.current = min(self.max_delay, self.current * 2)
+        logger.warning(f"⚠️ Rate limit hit — increasing delay to {self.current:.1f}s")
 
 
 class AIProvider(ABC):
@@ -181,7 +209,7 @@ class AIProviderChain:
 
         logger.info(f"📋 Provider chain: {[p[0] for p in self.providers]}")
 
-    async def get_response(self, user_message: str, conversation_history: list) -> str:
+    async def get_response(self, user_message: str, conversation_history: list, delay: "AdaptiveDelay | None" = None) -> str:
         """Try providers in order, fallback to next on failure"""
         last_error = None
 
@@ -190,13 +218,19 @@ class AIProviderChain:
                 logger.info(f"🤖 Trying {provider_name}...")
                 response = await provider.get_response(user_message, conversation_history)
                 logger.info(f"✅ {provider_name} succeeded")
+                if delay:
+                    delay.on_success()
                 return response
+            except requests.exceptions.HTTPError as e:
+                if e.response is not None and e.response.status_code == 429:
+                    if delay:
+                        delay.on_rate_limit()
+                logger.warning(f"❌ {provider_name} failed: {e}")
+                last_error = e
+                continue
             except Exception as e:
                 logger.warning(f"❌ {provider_name} failed: {e}")
                 last_error = e
                 continue
 
-        # All providers failed
-        error_msg = f"All providers failed. Last error: {str(last_error)}"
-        logger.error(error_msg)
-        return f"Sorry, all AI providers are unavailable: {str(last_error)}"
+        raise Exception(f"All providers failed. Last error: {str(last_error)}")

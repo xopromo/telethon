@@ -7,7 +7,7 @@ import os
 import json
 from telethon import TelegramClient
 from telethon.tl.types import Channel, MessageMediaPhoto, MessageMediaDocument
-from ai_providers import AIProviderChain
+from ai_providers import AIProviderChain, AdaptiveDelay
 from config import (
     TELEGRAM_API_ID,
     TELEGRAM_API_HASH,
@@ -41,7 +41,6 @@ REWRITE_PROMPT = """Ты — редактор Telegram-канала про не�
 
 POSTS_PER_CHANNEL = 3
 CHANNELS_LIMIT = 10
-AI_DELAY = 15  # seconds between AI requests to avoid rate limits
 
 
 class ContentAgent:
@@ -93,7 +92,9 @@ class ContentAgent:
         channels = await self.get_subscribed_channels()
         logger.info(f"📋 Processing {len(channels)} channels")
 
+        delay = AdaptiveDelay(initial=3.0, min_delay=3.0, max_delay=120.0)
         processed = 0
+
         for channel in channels:
             posts = await self.get_recent_posts(channel)
             for post_text, post_message in posts:
@@ -102,7 +103,7 @@ class ContentAgent:
                     logger.info(f"⏭️ Already seen: [{channel.title}] msg#{post_message.id}")
                     continue
 
-                rewritten = await self.rewrite_post(post_text, channel.title)
+                rewritten = await self.rewrite_post(post_text, channel.title, delay)
                 if rewritten and rewritten.strip() != "SKIP":
                     await self.send_to_saved(rewritten, channel.title, post_message)
                     self.mark_processed(processed_ids, channel.id, post_message.id)
@@ -111,7 +112,7 @@ class ContentAgent:
                     logger.info(f"⏭️ Skipped ad/vacancy from {channel.title}")
                     self.mark_processed(processed_ids, channel.id, post_message.id)
 
-                await asyncio.sleep(AI_DELAY)
+                await delay.wait()
 
         self.save_processed_ids(processed_ids)
         logger.info(f"✨ Done! Sent {processed} new posts to Saved Messages")
@@ -143,15 +144,15 @@ class ContentAgent:
             logger.warning(f"⚠️ Could not read {channel.title}: {e}")
         return posts
 
-    async def rewrite_post(self, text: str, source_title: str) -> str | None:
+    async def rewrite_post(self, text: str, source_title: str, delay: AdaptiveDelay) -> str | None:
         """Rewrite post via AI, return None on error"""
         try:
             logger.info(f"🤖 Rewriting from {source_title}...")
             prompt = REWRITE_PROMPT.format(text=text[:2000])
-            response = await self.ai.get_response(prompt, [])
+            response = await self.ai.get_response(prompt, [], delay=delay)
             return response.strip()
         except Exception as e:
-            logger.error(f"Rewrite error: {e}")
+            logger.error(f"All providers failed for {source_title}: {e}")
             return None
 
     async def send_to_saved(self, text: str, source_title: str, original_message):
