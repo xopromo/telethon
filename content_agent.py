@@ -4,6 +4,7 @@ Content Agent: monitors subscribed channels, rewrites posts via AI, sends to Sav
 import asyncio
 import logging
 import os
+import json
 from telethon import TelegramClient
 from telethon.tl.types import Channel, MessageMediaPhoto, MessageMediaDocument
 from ai_providers import AIProviderChain
@@ -17,6 +18,8 @@ from config import (
     MISTRAL_API_KEY,
     CEREBRAS_API_KEY,
 )
+
+PROCESSED_IDS_FILE = "processed_ids.json"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
@@ -56,11 +59,37 @@ class ContentAgent:
         providers_config = [(p, api_key_map[p]) for p in priority]
         self.ai = AIProviderChain(providers_config, "")
 
+    def load_processed_ids(self) -> dict:
+        """Load already processed post IDs from file"""
+        try:
+            with open(PROCESSED_IDS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def save_processed_ids(self, ids: dict):
+        """Save processed post IDs to file"""
+        with open(PROCESSED_IDS_FILE, "w") as f:
+            json.dump(ids, f, indent=2)
+
+    def is_processed(self, ids: dict, channel_id: int, message_id: int) -> bool:
+        return str(message_id) in ids.get(str(channel_id), [])
+
+    def mark_processed(self, ids: dict, channel_id: int, message_id: int):
+        key = str(channel_id)
+        if key not in ids:
+            ids[key] = []
+        if str(message_id) not in ids[key]:
+            ids[key].append(str(message_id))
+        # Keep only last 100 IDs per channel to avoid file bloat
+        ids[key] = ids[key][-100:]
+
     async def run(self):
         await self.client.start(phone=TELEGRAM_PHONE)
         me = await self.client.get_me()
         logger.info(f"✅ Connected as {me.first_name}")
 
+        processed_ids = self.load_processed_ids()
         channels = await self.get_subscribed_channels()
         logger.info(f"📋 Processing {len(channels)} channels")
 
@@ -68,15 +97,24 @@ class ContentAgent:
         for channel in channels:
             posts = await self.get_recent_posts(channel)
             for post_text, post_message in posts:
-                rewritten = await self.rewrite_post(post_text, channel.title)
-                if rewritten and rewritten != "SKIP":
-                    await self.send_to_saved(rewritten, channel.title, post_message)
-                    processed += 1
-                elif rewritten == "SKIP":
-                    logger.info(f"⏭️ Skipped ad/vacancy post from {channel.title}")
-                await asyncio.sleep(AI_DELAY)  # pause between AI requests
+                # Skip already processed posts
+                if self.is_processed(processed_ids, channel.id, post_message.id):
+                    logger.info(f"⏭️ Already seen: [{channel.title}] msg#{post_message.id}")
+                    continue
 
-        logger.info(f"✨ Done! Sent {processed} posts to Saved Messages")
+                rewritten = await self.rewrite_post(post_text, channel.title)
+                if rewritten and rewritten.strip() != "SKIP":
+                    await self.send_to_saved(rewritten, channel.title, post_message)
+                    self.mark_processed(processed_ids, channel.id, post_message.id)
+                    processed += 1
+                elif rewritten and rewritten.strip() == "SKIP":
+                    logger.info(f"⏭️ Skipped ad/vacancy from {channel.title}")
+                    self.mark_processed(processed_ids, channel.id, post_message.id)
+
+                await asyncio.sleep(AI_DELAY)
+
+        self.save_processed_ids(processed_ids)
+        logger.info(f"✨ Done! Sent {processed} new posts to Saved Messages")
         await self.client.disconnect()
 
     async def get_subscribed_channels(self) -> list:
