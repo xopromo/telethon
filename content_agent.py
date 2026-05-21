@@ -191,32 +191,35 @@ class ContentAgent:
             logger.error(f"All providers failed for {source_title}: {e}")
             return None
 
-    async def send_to_saved(self, text: str, source_title: str, original_message):
-        """Send rewritten post + original media to Saved Messages"""
+    async def send_to_saved(self, rewritten: str, source_title: str, original_message):
+        """Send two posts to Saved Messages: rewritten (with media) + original text"""
         try:
-            header = f"📌 {source_title}\n\n"
-            full_text = header + text
-
             has_media = original_message.media and isinstance(
                 original_message.media, (MessageMediaPhoto, MessageMediaDocument)
             )
 
+            # --- Post 1: rewritten version (with media if any) ---
+            post1_text = f"[ {source_title} ]\n\n{rewritten}"
+
             if has_media:
-                # Download media and send with rewritten caption
                 media_file = await self.client.download_media(original_message.media)
                 if media_file:
-                    await self.client.send_file("me", media_file, caption=full_text)
-                    # Clean up temp file
+                    await self.client.send_file("me", media_file, caption=post1_text)
                     try:
                         os.remove(media_file)
                     except Exception:
                         pass
-                    logger.info(f"✅ Sent with media to Saved Messages")
-                    return
+                else:
+                    await self.client.send_message("me", post1_text)
+            else:
+                await self.client.send_message("me", post1_text)
 
-            # Text only
-            await self.client.send_message("me", full_text)
-            logger.info(f"✅ Sent text to Saved Messages")
+            # --- Post 2: original text for reference ---
+            original_text = original_message.text or ""
+            post2_text = f"ОРИГИНАЛ [ {source_title} ]\n\n{original_text}"
+            await self.client.send_message("me", post2_text, link_preview=True)
+
+            logger.info(f"✅ Sent 2 posts to Saved Messages (rewritten + original)")
 
         except Exception as e:
             logger.error(f"Send error: {e}")
