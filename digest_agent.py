@@ -7,6 +7,7 @@ import logging
 import json
 import re
 import hashlib
+import os
 from datetime import datetime, timezone, timedelta
 from telethon import TelegramClient
 from telethon.tl.types import Channel
@@ -25,6 +26,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 PROCESSED_TOPICS_FILE = "processed_topics.json"
+ALL_SEEN_POSTS_FILE = "all_seen_posts.json"  # Global deduplication
 CHANNELS_LIMIT = 10
 LOOKBACK_HOURS = 24
 MIN_POSTS_FOR_DIGEST = 3
@@ -122,16 +124,50 @@ class DigestAgent:
         with open(PROCESSED_TOPICS_FILE, "w") as f:
             json.dump(topics, f, indent=2, ensure_ascii=False)
 
+    def load_all_seen_posts(self) -> dict:
+        try:
+            with open(ALL_SEEN_POSTS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def save_all_seen_posts(self, posts: dict):
+        with open(ALL_SEEN_POSTS_FILE, "w") as f:
+            json.dump(posts, f, indent=2)
+
+    def post_hash(self, text: str) -> str:
+        preview = text[:200].strip().lower()
+        return hashlib.md5(preview.encode()).hexdigest()[:8]
+
+    def seen_similar_post(self, seen_posts: dict, channel_id: int, text: str) -> bool:
+        text_hash = self.post_hash(text)
+        channel_key = str(channel_id)
+        if channel_key not in seen_posts:
+            return False
+        for post_hash in seen_posts[channel_key].values():
+            if post_hash == text_hash:
+                return True
+        return False
+
+    def record_post(self, seen_posts: dict, channel_id: int, message_id: int, text: str):
+        channel_key = str(channel_id)
+        if channel_key not in seen_posts:
+            seen_posts[channel_key] = {}
+        msg_key = str(message_id)
+        seen_posts[channel_key][msg_key] = self.post_hash(text)
+        seen_posts[channel_key] = dict(list(seen_posts[channel_key].items())[-200:])
+
     async def run(self):
         await self.client.start(phone=TELEGRAM_PHONE)
         me = await self.client.get_me()
         logger.info(f"✅ Connected as {me.first_name}")
 
         processed_topics = self.load_processed_topics()
+        seen_posts = self.load_all_seen_posts()
         since = datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)
 
         # Step 1: collect all posts from last 24h
-        all_posts = await self.collect_posts(since)
+        all_posts = await self.collect_posts(since, seen_posts)
         logger.info(f"📦 Collected {len(all_posts)} posts total")
 
         if len(all_posts) < MIN_POSTS_FOR_DIGEST:
@@ -169,10 +205,11 @@ class DigestAgent:
                 await self.delay.wait()
 
         self.save_processed_topics(processed_topics)
+        self.save_all_seen_posts(seen_posts)
         logger.info(f"✨ Digest done! Sent {articles_sent} articles")
         await self.client.disconnect()
 
-    async def collect_posts(self, since: datetime) -> list:
+    async def collect_posts(self, since: datetime, seen_posts: dict) -> list:
         """Collect posts from subscribed channels since given time"""
         all_posts = []
         channels_found = 0
@@ -194,11 +231,20 @@ class DigestAgent:
                         continue
                     if message.fwd_from:
                         continue
+
+                    # Skip if similar post seen before
+                    if self.seen_similar_post(seen_posts, channel.id, message.text):
+                        logger.info(f"⏭ Duplicate skipped in {channel.title}")
+                        continue
+
                     all_posts.append({
                         "text": message.text,
                         "channel": channel.title,
                         "date": message.date.isoformat(),
                     })
+
+                    # Record that we've seen this
+                    self.record_post(seen_posts, channel.id, message.id, message.text)
             except Exception as e:
                 logger.warning(f"⚠️ Could not read {channel.title}: {e}")
 

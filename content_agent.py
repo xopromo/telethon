@@ -9,6 +9,7 @@ import logging
 import os
 import json
 import re
+import hashlib
 from telethon import TelegramClient
 from telethon.tl.types import Channel, MessageMediaPhoto, MessageMediaDocument
 from ai_providers import AIProviderChain, AdaptiveDelay
@@ -23,6 +24,7 @@ from config import (
 )
 
 PROCESSED_IDS_FILE = "processed_ids.json"
+ALL_SEEN_POSTS_FILE = "all_seen_posts.json"  # Global deduplication
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
@@ -151,6 +153,50 @@ class ContentAgent:
             ids[key].append(str(message_id))
         ids[key] = ids[key][-100:]
 
+    def load_all_seen_posts(self) -> dict:
+        """Load global deduplication database"""
+        try:
+            with open(ALL_SEEN_POSTS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def save_all_seen_posts(self, posts: dict):
+        """Save global deduplication database"""
+        with open(ALL_SEEN_POSTS_FILE, "w") as f:
+            json.dump(posts, f, indent=2)
+
+    def post_hash(self, text: str) -> str:
+        """Hash of first 200 chars — catches dupes even if slightly different"""
+        preview = text[:200].strip().lower()
+        return hashlib.md5(preview.encode()).hexdigest()[:8]
+
+    def seen_similar_post(self, seen_posts: dict, channel_id: int, text: str) -> bool:
+        """Check if we've seen a post with similar text"""
+        text_hash = self.post_hash(text)
+        channel_key = str(channel_id)
+
+        if channel_key not in seen_posts:
+            return False
+
+        # Check if this hash (or similar) exists
+        for post_hash in seen_posts[channel_key].values():
+            if post_hash == text_hash:
+                return True
+        return False
+
+    def record_post(self, seen_posts: dict, channel_id: int, message_id: int, text: str):
+        """Record that we've seen this post"""
+        channel_key = str(channel_id)
+        if channel_key not in seen_posts:
+            seen_posts[channel_key] = {}
+
+        msg_key = str(message_id)
+        seen_posts[channel_key][msg_key] = self.post_hash(text)
+
+        # Keep only last 200 per channel
+        seen_posts[channel_key] = dict(list(seen_posts[channel_key].items())[-200:])
+
     # ── Main flow ──────────────────────────────────────────────────────────────
 
     async def run(self):
@@ -159,9 +205,10 @@ class ContentAgent:
         logger.info(f"✅ Connected as {me.first_name}")
 
         processed_ids = self.load_processed_ids()
+        seen_posts = self.load_all_seen_posts()
 
         # Step 1: collect all fresh posts
-        all_posts = await self.collect_posts(processed_ids)
+        all_posts = await self.collect_posts(processed_ids, seen_posts)
         logger.info(f"📦 Collected {len(all_posts)} new posts")
 
         if not all_posts:
@@ -215,12 +262,13 @@ class ContentAgent:
             await self.delay.wait()
 
         self.save_processed_ids(processed_ids)
+        self.save_all_seen_posts(seen_posts)
         logger.info(f"✨ Done! Sent {sent} items to Saved Messages")
         await self.client.disconnect()
 
     # ── Collect ────────────────────────────────────────────────────────────────
 
-    async def collect_posts(self, processed_ids: dict) -> list:
+    async def collect_posts(self, processed_ids: dict, seen_posts: dict) -> list:
         posts = []
         channels_found = 0
 
@@ -236,12 +284,20 @@ class ContentAgent:
 
             try:
                 async for message in self.client.iter_messages(channel, limit=POSTS_PER_CHANNEL):
-                    if self.is_processed(processed_ids, channel.id, message.id):
-                        continue
                     if not message.text or len(message.text) < 100:
                         continue
                     if message.fwd_from:
                         continue
+
+                    # Skip if already processed
+                    if self.is_processed(processed_ids, channel.id, message.id):
+                        continue
+
+                    # Skip if similar post seen before (dedup)
+                    if self.seen_similar_post(seen_posts, channel.id, message.text):
+                        logger.info(f"⏭ Duplicate/similar post skipped in {channel.title}")
+                        continue
+
                     posts.append({
                         "text": message.text,
                         "channel": channel.title,
@@ -249,6 +305,9 @@ class ContentAgent:
                         "message_id": message.id,
                         "message_obj": message,
                     })
+
+                    # Record that we've seen this post
+                    self.record_post(seen_posts, channel.id, message.id, message.text)
             except Exception as e:
                 logger.warning(f"⚠️ Could not read {channel.title}: {e}")
 
