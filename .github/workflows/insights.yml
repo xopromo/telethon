@@ -8,17 +8,17 @@ on:
         required: true
         default: 'VelesCommunityRu'
       topic:
-        description: 'Topic name (e.g. Pro трейдинг)'
+        description: 'Topic name (auto-detect, ignored if topic_id set)'
         required: false
-        default: 'Pro трейдинг'
+        default: ''
       batch:
         description: 'Posts per run (default 1000)'
         required: false
         default: '1000'
       topic_id:
-        description: 'Topic ID (manual override if auto-detection fails)'
+        description: 'Topic ID (manual override)'
         required: false
-        default: ''
+        default: '230358'
 
 permissions:
   contents: write
