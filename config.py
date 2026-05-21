@@ -10,10 +10,19 @@ TELEGRAM_PHONE = os.getenv('TELEGRAM_PHONE', '')
 BOT_USERNAME = os.getenv('BOT_USERNAME', '')
 SESSION_NAME = os.getenv('SESSION_NAME', 'telegram_session')
 
-# Anthropic configuration
-ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+# AI Provider configuration
+AI_PROVIDER = os.getenv('AI_PROVIDER', 'gemini').lower()  # gemini, mistral, cerebras
 
-# System prompt for Claude
+# Gemini API
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+
+# Mistral API
+MISTRAL_API_KEY = os.getenv('MISTRAL_API_KEY', '')
+
+# Cerebras API
+CEREBRAS_API_KEY = os.getenv('CEREBRAS_API_KEY', '')
+
+# System prompt for AI
 SYSTEM_PROMPT = """You are a helpful AI assistant integrated into Telegram.
 You help the user with various tasks including:
 - Answering questions

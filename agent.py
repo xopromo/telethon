@@ -1,25 +1,44 @@
 import asyncio
 import logging
 from telethon import TelegramClient, events
-from telethon.tl.types import User
-from anthropic import Anthropic
+from ai_providers import get_ai_provider
 from config import (
     TELEGRAM_API_ID,
     TELEGRAM_API_HASH,
     TELEGRAM_PHONE,
     SESSION_NAME,
-    ANTHROPIC_API_KEY,
+    AI_PROVIDER,
+    GEMINI_API_KEY,
+    MISTRAL_API_KEY,
+    CEREBRAS_API_KEY,
     SYSTEM_PROMPT,
 )
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class TelegramAIAgent:
     def __init__(self):
         self.client = TelegramClient(SESSION_NAME, TELEGRAM_API_ID, TELEGRAM_API_HASH)
-        self.anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY)
         self.conversation_history = {}  # Store conversation context per user
+
+        # Initialize AI provider
+        api_key_map = {
+            "gemini": GEMINI_API_KEY,
+            "mistral": MISTRAL_API_KEY,
+            "cerebras": CEREBRAS_API_KEY,
+        }
+
+        api_key = api_key_map.get(AI_PROVIDER.lower())
+        if not api_key:
+            raise ValueError(
+                f"API key for {AI_PROVIDER} not found. "
+                f"Please set the appropriate API key in .env file"
+            )
+
+        self.ai_provider = get_ai_provider(AI_PROVIDER, api_key, SYSTEM_PROMPT)
+        logger.info(f"✨ Using {AI_PROVIDER.upper()} as AI provider")
 
     async def start(self):
         """Start the Telegram client and connect"""
@@ -58,7 +77,7 @@ class TelegramAIAgent:
 
         # Show typing indicator
         async with self.client.action(event.chat_id, 'typing'):
-            # Get response from Claude
+            # Get response from AI
             response = await self.get_ai_response(message_text, user_identifier)
 
             # Send response
@@ -70,7 +89,7 @@ class TelegramAIAgent:
                 await event.reply("Sorry, there was an error processing your request.")
 
     async def get_ai_response(self, user_message: str, user_id: str) -> str:
-        """Get response from Claude AI with conversation history"""
+        """Get response from AI with conversation history"""
 
         # Initialize conversation history for new users
         if user_id not in self.conversation_history:
@@ -86,14 +105,7 @@ class TelegramAIAgent:
         messages = self.conversation_history[user_id][-10:]
 
         try:
-            response = self.anthropic_client.messages.create(
-                model="claude-opus-4-7",
-                max_tokens=1024,
-                system=SYSTEM_PROMPT,
-                messages=messages
-            )
-
-            assistant_message = response.content[0].text
+            assistant_message = await self.ai_provider.get_response(user_message, messages)
 
             # Add assistant response to history
             self.conversation_history[user_id].append({
@@ -104,7 +116,7 @@ class TelegramAIAgent:
             return assistant_message
 
         except Exception as e:
-            logger.error(f"Error calling Claude API: {e}")
+            logger.error(f"Error calling AI provider: {e}")
             return f"Sorry, I encountered an error: {str(e)}"
 
     async def stop(self):
