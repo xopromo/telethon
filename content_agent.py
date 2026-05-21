@@ -215,8 +215,11 @@ class ContentAgent:
         processed_ids = self.load_processed_ids()
         seen_posts = self.load_all_seen_posts()
 
+        offset = processed_ids.get("_channel_offset", 0)
+        logger.info(f"🔄 Channel offset: {offset}")
+
         # Step 1: collect all fresh posts
-        all_posts = await self.collect_posts(processed_ids, seen_posts)
+        all_posts, next_offset = await self.collect_posts(processed_ids, seen_posts, offset)
         logger.info(f"📦 Collected {len(all_posts)} new posts")
 
         if not all_posts:
@@ -278,6 +281,7 @@ class ContentAgent:
 
             await self.delay.wait()
 
+        processed_ids["_channel_offset"] = next_offset
         self.save_processed_ids(processed_ids)
         self.save_all_seen_posts(seen_posts)
         logger.info(f"✨ Done! Sent {sent} items to Saved Messages")
@@ -285,14 +289,20 @@ class ContentAgent:
 
     # ── Collect ────────────────────────────────────────────────────────────────
 
-    async def collect_posts(self, processed_ids: dict, seen_posts: dict) -> list:
+    async def collect_posts(self, processed_ids: dict, seen_posts: dict, offset: int = 0) -> tuple[list, int]:
         posts = []
         channels_found = 0
+        channels_skipped = 0
 
         async for dialog in self.client.iter_dialogs():
             if channels_found >= CHANNELS_LIMIT:
                 break
             if not (isinstance(dialog.entity, Channel) and not dialog.entity.megagroup):
+                continue
+
+            # Skip channels before offset for rotation
+            if channels_skipped < offset:
+                channels_skipped += 1
                 continue
 
             channel = dialog.entity
@@ -330,7 +340,10 @@ class ContentAgent:
             except Exception as e:
                 logger.warning(f"⚠️ Could not read {channel.title}: {e}")
 
-        return posts
+        # Next run starts after the channels we just processed; reset when exhausted
+        next_offset = offset + channels_found if channels_found >= CHANNELS_LIMIT else 0
+        logger.info(f"🔄 Next offset will be: {next_offset}")
+        return posts, next_offset
 
     # ── Group ──────────────────────────────────────────────────────────────────
 
