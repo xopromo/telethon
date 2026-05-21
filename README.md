@@ -37,40 +37,22 @@ Agent tries providers in order, automatically switching if one fails:
 - Sign up and get API key
 - Completely free
 
-### 3. Configure
+### 3. Configure Telegram
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Create .env file
-cp .env.example .env
-
-# Edit .env with your credentials
-nano .env  # or use your editor
-```
-
-Example `.env`:
+Edit `.env` file and add:
 ```
 TELEGRAM_API_ID=123456789
-TELEGRAM_API_HASH=abcdef123456...
+TELEGRAM_API_HASH=abcdef123456hash
 TELEGRAM_PHONE=+1234567890
-
-# Choose one provider: gemini, mistral, or cerebras
-AI_PROVIDER=gemini
-
-# Set only the API key for your chosen provider
-GEMINI_API_KEY=sk-...
-MISTRAL_API_KEY=your_mistral_key
-CEREBRAS_API_KEY=your_cerebras_key
-
 BOT_USERNAME=yourname
-SESSION_NAME=telegram_session
 ```
 
-### 4. Run
+API keys already added (Mistral, Gemini, Cerebras).
+
+### 4. Install & Run
 
 ```bash
+pip install -r requirements.txt
 python agent.py
 ```
 
@@ -78,27 +60,38 @@ First run will ask you to confirm your Telegram login (you'll receive a code via
 
 ## Features
 
-✅ Multiple free AI providers (Gemini, Mistral, Cerebras)  
-✅ Real-time message processing  
-✅ Conversation context memory  
-✅ Typing indicator while processing  
-✅ Error handling  
+✅ **Automatic Failover** - If one provider fails, automatically tries next  
+✅ **3 Free AI Providers** - Mistral, Gemini, Cerebras  
+✅ **Real-time Processing** - Responds instantly to Telegram messages  
+✅ **Context Memory** - Remembers conversation history  
+✅ **Resilient** - No single point of failure  
+
+## How It Works
+
+```
+Message received
+  ↓
+Try Mistral API
+  ├─ Success? → Send response ✅
+  ├─ Fail? → Try Gemini
+  │   ├─ Success? → Send response ✅
+  │   ├─ Fail? → Try Cerebras
+  │   │   ├─ Success? → Send response ✅
+  │   │   └─ Fail? → "All providers down" ❌
+```
 
 ## Usage
 
-Just send any message to your account and the AI will respond!
+Just send any message in Telegram and the agent will respond!
 
-## Switching Providers
-
-To switch AI providers, just change `AI_PROVIDER` in `.env` and restart the agent:
-
-```bash
-AI_PROVIDER=mistral  # Switch to Mistral
-python agent.py
+Monitor logs to see which provider is being used:
+```
+🤖 Trying mistral...
+✅ mistral succeeded
 ```
 
 ## API Costs
 
-- **Gemini**: Free (generous free tier)
-- **Mistral**: Free tier (2M tokens/month), then paid
-- **Cerebras**: Free to use
+- **Mistral**: Free tier (2M tokens/month)
+- **Gemini**: Free (generous limits)
+- **Cerebras**: Completely free
