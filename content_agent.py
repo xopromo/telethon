@@ -166,36 +166,42 @@ class ContentAgent:
         with open(ALL_SEEN_POSTS_FILE, "w") as f:
             json.dump(posts, f, indent=2)
 
-    def post_hash(self, text: str) -> str:
-        """Hash of first 200 chars — catches dupes even if slightly different"""
-        preview = text[:200].strip().lower()
-        return hashlib.md5(preview.encode()).hexdigest()[:8]
+    def sentence_hashes(self, text: str) -> list[str]:
+        """Hash first 3 sentences individually.
+        Even if title is changed, sentences 2-3 will match."""
+        # Split by sentence-ending punctuation
+        sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+        # Take first 3 non-empty sentences, min 30 chars to skip tiny fragments
+        sentences = [s.strip().lower() for s in sentences if len(s.strip()) >= 30][:3]
+        return [hashlib.md5(s.encode()).hexdigest()[:8] for s in sentences]
 
     def seen_similar_post(self, seen_posts: dict, channel_id: int, text: str) -> bool:
-        """Check if we've seen a post with similar text"""
-        text_hash = self.post_hash(text)
-        channel_key = str(channel_id)
-
-        if channel_key not in seen_posts:
+        """Return True if any sentence hash matches a previously seen post"""
+        new_hashes = set(self.sentence_hashes(text))
+        if not new_hashes:
             return False
 
-        # Check if this hash (or similar) exists
-        for post_hash in seen_posts[channel_key].values():
-            if post_hash == text_hash:
-                return True
+        # Check against ALL channels (not just same channel — cross-channel dedup)
+        for channel_data in seen_posts.values():
+            for stored_hashes in channel_data.values():
+                if isinstance(stored_hashes, list):
+                    if new_hashes & set(stored_hashes):  # any intersection
+                        return True
+                else:
+                    # Legacy single-hash format — skip
+                    pass
         return False
 
     def record_post(self, seen_posts: dict, channel_id: int, message_id: int, text: str):
-        """Record that we've seen this post"""
+        """Store sentence hashes for this post"""
         channel_key = str(channel_id)
         if channel_key not in seen_posts:
             seen_posts[channel_key] = {}
 
-        msg_key = str(message_id)
-        seen_posts[channel_key][msg_key] = self.post_hash(text)
+        seen_posts[channel_key][str(message_id)] = self.sentence_hashes(text)
 
-        # Keep only last 200 per channel
-        seen_posts[channel_key] = dict(list(seen_posts[channel_key].items())[-200:])
+        # Keep last 300 posts per channel
+        seen_posts[channel_key] = dict(list(seen_posts[channel_key].items())[-300:])
 
     # ── Main flow ──────────────────────────────────────────────────────────────
 

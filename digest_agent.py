@@ -135,27 +135,28 @@ class DigestAgent:
         with open(ALL_SEEN_POSTS_FILE, "w") as f:
             json.dump(posts, f, indent=2)
 
-    def post_hash(self, text: str) -> str:
-        preview = text[:200].strip().lower()
-        return hashlib.md5(preview.encode()).hexdigest()[:8]
+    def sentence_hashes(self, text: str) -> list[str]:
+        sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+        sentences = [s.strip().lower() for s in sentences if len(s.strip()) >= 30][:3]
+        return [hashlib.md5(s.encode()).hexdigest()[:8] for s in sentences]
 
     def seen_similar_post(self, seen_posts: dict, channel_id: int, text: str) -> bool:
-        text_hash = self.post_hash(text)
-        channel_key = str(channel_id)
-        if channel_key not in seen_posts:
+        new_hashes = set(self.sentence_hashes(text))
+        if not new_hashes:
             return False
-        for post_hash in seen_posts[channel_key].values():
-            if post_hash == text_hash:
-                return True
+        for channel_data in seen_posts.values():
+            for stored_hashes in channel_data.values():
+                if isinstance(stored_hashes, list):
+                    if new_hashes & set(stored_hashes):
+                        return True
         return False
 
     def record_post(self, seen_posts: dict, channel_id: int, message_id: int, text: str):
         channel_key = str(channel_id)
         if channel_key not in seen_posts:
             seen_posts[channel_key] = {}
-        msg_key = str(message_id)
-        seen_posts[channel_key][msg_key] = self.post_hash(text)
-        seen_posts[channel_key] = dict(list(seen_posts[channel_key].items())[-200:])
+        seen_posts[channel_key][str(message_id)] = self.sentence_hashes(text)
+        seen_posts[channel_key] = dict(list(seen_posts[channel_key].items())[-300:])
 
     async def run(self):
         await self.client.start(phone=TELEGRAM_PHONE)
