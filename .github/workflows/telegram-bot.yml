@@ -1,16 +1,12 @@
-name: Telegram AI Agent
+name: Telegram Content Agent
 
 on:
-  schedule:
-    # Run every hour
-    - cron: '0 * * * *'
-  # Also allow manual trigger
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger only (button in GitHub Actions tab)
 
 jobs:
-  check-messages:
+  run-agent:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code
@@ -22,13 +18,22 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
+        run: pip install telethon==1.34.0 python-dotenv requests google-generativeai
+
+      - name: Restore Telegram session
+        env:
+          SESSION_BASE64: ${{ secrets.SESSION_BASE64 }}
         run: |
-          python -m pip install --upgrade pip
-          pip install telethon==1.34.0 python-dotenv requests google-generativeai
+          if [ -n "$SESSION_BASE64" ]; then
+            echo "$SESSION_BASE64" | base64 -d > telegram_session.session
+            echo "Session restored ✅"
+          else
+            echo "No session found - first run requires local auth"
+          fi
 
       - name: Create .env file
         run: |
-          cat > .env << 'EOF'
+          cat > .env << EOF
           TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
@@ -38,13 +43,14 @@ jobs:
           SESSION_NAME=telegram_session
           EOF
 
-      - name: Run Telegram AI Agent
-        run: python agent_scheduled.py
+      - name: Run Content Agent
+        run: python content_agent.py
 
-      - name: Upload session (for persistence)
-        uses: actions/upload-artifact@v3
+      - name: Save updated session
         if: always()
-        with:
-          name: telegram-session
-          path: '*.session*'
-          retention-days: 90
+        run: |
+          if [ -f telegram_session.session ]; then
+            SESSION=$(base64 -w 0 telegram_session.session)
+            echo "SESSION_BASE64=$SESSION" >> $GITHUB_OUTPUT
+            echo "Session saved ✅"
+          fi
