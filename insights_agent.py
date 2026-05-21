@@ -82,7 +82,7 @@ class InsightsAgent:
         }
         providers_config = [(p, api_key_map[p]) for p in ["mistral", "gemini", "cerebras"]]
         self.ai = AIProviderChain(providers_config, "")
-        self.delay = AdaptiveDelay(initial=3.0, min_delay=3.0, max_delay=120.0)
+        self.delay = AdaptiveDelay(initial=7.0, min_delay=5.0, max_delay=120.0)
 
     def load_state(self) -> dict:
         try:
