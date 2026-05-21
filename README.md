@@ -38,7 +38,7 @@ Run on your computer when you're online.
 ```
 TELEGRAM_API_ID = 94575
 TELEGRAM_API_HASH = a3406de8d12d27ecc61ff27eabe69fff
-TELEGRAM_PHONE = +79552230812
+TELEGRAM_PHONE = +79952230812
 MISTRAL_API_KEY = 1Xl3lcBIS5TTV0bkHEvmhTwnIM6AJ3VY
 GEMINI_API_KEY = AIzaSyDemJMre4p3BFlWyiXCc9aK_XdVnOcOagk
 CEREBRAS_API_KEY = csk-wn5mpv6jp5yy5phkc65xfwwt8t8rrthxrfxd4trcfttx5hck

@@ -4,7 +4,7 @@ from telethon import TelegramClient
 
 API_ID = 2040
 API_HASH = "b18441a1ff607e10a989891a5462e627"
-PHONE = "+79552230812"
+PHONE = "+79952230812"
 SESSION = "tg_session"
 
 async def main():
