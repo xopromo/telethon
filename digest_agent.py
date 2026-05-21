@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 PROCESSED_TOPICS_FILE = "processed_topics.json"
 ALL_SEEN_POSTS_FILE = "all_seen_posts.json"  # Global deduplication
-CHANNELS_LIMIT = 10
+CHANNELS_LIMIT = 20
 LOOKBACK_HOURS = 24
 MIN_POSTS_FOR_DIGEST = 3
 

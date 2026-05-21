@@ -30,7 +30,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 POSTS_PER_CHANNEL = 3
-CHANNELS_LIMIT = 10
+CHANNELS_LIMIT = 20
 
 # ── Prompts ────────────────────────────────────────────────────────────────────
 
