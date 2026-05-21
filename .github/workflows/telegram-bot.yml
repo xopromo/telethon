@@ -1,0 +1,50 @@
+name: Telegram AI Agent
+
+on:
+  schedule:
+    # Run every hour
+    - cron: '0 * * * *'
+  # Also allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  check-messages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install telethon==1.34.0 python-dotenv requests google-generativeai
+
+      - name: Create .env file
+        run: |
+          cat > .env << 'EOF'
+          TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
+          MISTRAL_API_KEY=${{ secrets.MISTRAL_API_KEY }}
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          CEREBRAS_API_KEY=${{ secrets.CEREBRAS_API_KEY }}
+          SESSION_NAME=telegram_session
+          EOF
+
+      - name: Run Telegram AI Agent
+        run: python agent_scheduled.py
+
+      - name: Upload session (for persistence)
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: telegram-session
+          path: '*.session*'
+          retention-days: 90

@@ -12,7 +12,52 @@ Agent tries providers in order, automatically switching if one fails:
 
 **Example:** If Mistral is down, automatically switches to Gemini. If Gemini fails too, tries Cerebras.
 
-## Setup
+## Two Deployment Options
+
+### Option A: GitHub Actions (FREE MVP) ⭐
+Runs every hour automatically, 24/7 for free!
+
+### Option B: Local Machine
+Run on your computer when you're online.
+
+---
+
+## Setup for GitHub Actions (Recommended)
+
+### 1. Fork Repository
+1. Go to https://github.com/xopromo/telethon
+2. Click **Fork** button (top right)
+3. This creates your own copy
+
+### 2. Add GitHub Secrets
+
+1. Go to **Settings** → **Secrets and variables** → **Actions**
+2. Click **New repository secret**
+3. Add these secrets:
+
+```
+TELEGRAM_API_ID = 94575
+TELEGRAM_API_HASH = a3406de8d12d27ecc61ff27eabe69fff
+TELEGRAM_PHONE = +79552230812
+MISTRAL_API_KEY = 1Xl3lcBIS5TTV0bkHEvmhTwnIM6AJ3VY
+GEMINI_API_KEY = AIzaSyDemJMre4p3BFlWyiXCc9aK_XdVnOcOagk
+CEREBRAS_API_KEY = csk-wn5mpv6jp5yy5phkc65xfwwt8t8rrthxrfxd4trcfttx5hck
+```
+
+### 3. Enable Actions
+
+1. Go to **Actions** tab
+2. Click **I understand my workflows, go ahead and enable them**
+
+### 4. It's Running!
+
+Agent now checks for messages **every hour** automatically! 🤖
+
+Check logs: **Actions** tab → Latest workflow run
+
+---
+
+## Alternative: Local Setup
 
 ### 1. Get Telegram API Credentials
 
@@ -68,8 +113,25 @@ First run will ask you to confirm your Telegram login (you'll receive a code via
 
 ## How It Works
 
+### GitHub Actions Mode (Scheduled)
 ```
-Message received
+Every hour:
+  ↓
+Run agent_scheduled.py
+  ↓
+Check for new messages
+  ↓
+For each message:
+    Try Mistral → Gemini → Cerebras
+    ↓
+    Send reply
+    ↓
+Exit
+```
+
+### Local Mode (Always Listening)
+```
+Message received (real-time)
   ↓
 Try Mistral API
   ├─ Success? → Send response ✅
