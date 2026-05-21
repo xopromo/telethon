@@ -84,6 +84,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin
           git merge origin/claude/telethon-telegram-ai-agent-BEWcw || true
-          git add insights_state.json
-          git diff --staged --quiet || git commit -m "Update insights state [skip ci]"
-          git push
+          if [ -f insights_state.json ]; then
+            git add insights_state.json
+            git diff --staged --quiet || git commit -m "Update insights state [skip ci]"
+            git push
+          else
+            echo "No state file created yet"
+          fi
