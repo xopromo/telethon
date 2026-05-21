@@ -4,9 +4,10 @@ Personal Telegram agent that monitors subscribed channels, rewrites posts via AI
 
 ## Architecture
 
-Two independent agents:
+Three independent agents:
 - **content_agent.py** — manual run, fetches latest posts per channel, rewrites singles, merges similar into mini-digests
 - **digest_agent.py** — runs every 6h via cron, collects posts from last 24h, writes full articles for groups of 3+
+- **insights_agent.py** — CLI tool, reads historical posts from a channel/topic (newest→oldest in batches), filters valuable insights via AI, publishes to a private group
 
 Shared helpers:
 - **ai_providers.py** — AIProviderChain (failover) + AdaptiveDelay
@@ -57,9 +58,28 @@ Each published item is **two messages**:
 | Constant | Value | File |
 |---|---|---|
 | POSTS_PER_CHANNEL | 3 | content_agent.py |
-| CHANNELS_LIMIT | 10 | both |
+| CHANNELS_LIMIT | 20 | content_agent.py, digest_agent.py |
 | LOOKBACK_HOURS | 24 | digest_agent.py |
 | MIN_POSTS_FOR_DIGEST | 3 | digest_agent.py |
+| DEFAULT_BATCH | 1000 | insights_agent.py |
+| FILTER_CHUNK | 50 | insights_agent.py |
+
+## insights_agent.py
+
+CLI usage:
+```
+python insights_agent.py --channel VelesCommunityRu --topic "Pro трейдинг"
+python insights_agent.py --channel VelesCommunityRu --topic "Pro трейдинг" --batch 500
+```
+
+State stored in `insights_state.json` per channel:
+- `freeze_id` — max message ID at first run; newer posts are ignored during history traversal
+- `cursor_id` — current position going backwards; 0 = history exhausted
+- `topic_id` — cached forum topic ID
+- `output_group_id` — auto-created private megagroup for publishing
+- `total_processed` / `total_published` — cumulative counters
+
+Flow per run: collect batch → filter in chunks of 50 via AI → generate insight per valuable post → publish (insight + original text + link, with media if present)
 
 ## Text cleanup (clean_text)
 
