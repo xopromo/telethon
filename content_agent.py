@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 import json
+import re
 from telethon import TelegramClient
 from telethon.tl.types import Channel, MessageMediaPhoto, MessageMediaDocument
 from ai_providers import AIProviderChain, AdaptiveDelay
@@ -32,12 +33,47 @@ REWRITE_PROMPT = """Ты — редактор Telegram-канала про не�
 - Пиши на русском языке
 - Максимум 800 символов
 - Не упоминай источник
+- Не используй эмодзи вообще
 - Не пиши вступления типа "Вот переписанный пост:"
 - Начинай сразу с контента
+- Ссылки: оставь только внешние источники (новости, исследования, сайты) — убери все ссылки на Telegram-каналы (t.me/...)
 - Если пост — реклама или вакансия, пропусти его (ответь только словом: SKIP)
 
 Оригинальный пост:
 {text}"""
+
+
+# Regex to strip emoji unicode characters
+EMOJI_RE = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"
+    "\U0001F300-\U0001F5FF"
+    "\U0001F680-\U0001F6FF"
+    "\U0001F1E0-\U0001F1FF"
+    "\U00002500-\U00002BEF"
+    "\U00002702-\U000027B0"
+    "\U000024C2-\U0001F251"
+    "\U0001f926-\U0001f937"
+    "\U00010000-\U0010ffff"
+    "♀-♂"
+    "☀-⭕"
+    "‍⏏⏩⌚️〰"
+    "]+",
+    flags=re.UNICODE,
+)
+
+# Regex to strip t.me links (channel links)
+TG_LINK_RE = re.compile(r"https?://t\.me/\S+|@\w{5,}", re.IGNORECASE)
+
+
+def clean_text(text: str) -> str:
+    """Remove emoji and Telegram channel links from text"""
+    text = EMOJI_RE.sub("", text)
+    text = TG_LINK_RE.sub("", text)
+    # Clean up extra whitespace/newlines left after removals
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r" {2,}", " ", text)
+    return text.strip()
 
 POSTS_PER_CHANNEL = 3
 CHANNELS_LIMIT = 10
@@ -150,7 +186,7 @@ class ContentAgent:
             logger.info(f"🤖 Rewriting from {source_title}...")
             prompt = REWRITE_PROMPT.format(text=text[:2000])
             response = await self.ai.get_response(prompt, [], delay=delay)
-            return response.strip()
+            return clean_text(response)
         except Exception as e:
             logger.error(f"All providers failed for {source_title}: {e}")
             return None
