@@ -1,11 +1,11 @@
 """
-Content Agent: monitors AI/tech channels, rewrites posts, sends to Saved Messages
+Content Agent: monitors subscribed channels, rewrites posts via AI, sends to Saved Messages
 """
 import asyncio
 import logging
 import os
 from telethon import TelegramClient
-from telethon.tl.types import Channel
+from telethon.tl.types import Channel, MessageMediaPhoto, MessageMediaDocument
 from ai_providers import AIProviderChain
 from config import (
     TELEGRAM_API_ID,
@@ -21,37 +21,39 @@ from config import (
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
 
-REWRITE_PROMPT = """You are a Telegram content editor.
+REWRITE_PROMPT = """Ты — редактор Telegram-канала про нейросети и технологии.
 
-Rewrite the following post for my personal channel. Rules:
-- Keep the core idea and facts
-- Make it more engaging and concise
-- Write in Russian
-- Keep it under 1000 characters
-- Do NOT add emojis excessively (max 2-3)
-- Do NOT mention the original source
-- Start directly with the content, no intro like "Here is..." or "Rewritten:"
+Перепиши этот пост для моего канала. Требования:
+- Сохрани суть и факты
+- Сделай текст живым и интересным
+- Пиши на русском языке
+- Максимум 800 символов
+- Не упоминай источник
+- Не пиши вступления типа "Вот переписанный пост:"
+- Начинай сразу с контента
+- Если пост — реклама или вакансия, пропусти его (ответь только словом: SKIP)
 
-Original post:
+Оригинальный пост:
 {text}"""
 
-POSTS_PER_CHANNEL = 3  # How many recent posts to take from each channel
-CHANNELS_LIMIT = 10    # How many channels to monitor
+POSTS_PER_CHANNEL = 3
+CHANNELS_LIMIT = 10
+AI_DELAY = 5  # seconds between AI requests to avoid rate limits
 
 
 class ContentAgent:
     def __init__(self):
         self.client = TelegramClient(SESSION_NAME, TELEGRAM_API_ID, TELEGRAM_API_HASH)
 
+        # Gemini first — more stable and free, Mistral last to avoid rate limits
         api_key_map = {
             "mistral": MISTRAL_API_KEY,
             "gemini": GEMINI_API_KEY,
             "cerebras": CEREBRAS_API_KEY,
         }
-        providers_config = [
-            (provider, api_key_map.get(provider))
-            for provider in PROVIDER_PRIORITY
-        ]
+        # Override priority: gemini → cerebras → mistral
+        priority = ["gemini", "cerebras", "mistral"]
+        providers_config = [(p, api_key_map[p]) for p in priority]
         self.ai = AIProviderChain(providers_config, "")
 
     async def run(self):
@@ -59,68 +61,96 @@ class ContentAgent:
         me = await self.client.get_me()
         logger.info(f"✅ Connected as {me.first_name}")
 
-        # Get user's channel subscriptions
         channels = await self.get_subscribed_channels()
-        logger.info(f"📋 Found {len(channels)} channels to process")
+        logger.info(f"📋 Processing {len(channels)} channels")
 
         processed = 0
         for channel in channels:
             posts = await self.get_recent_posts(channel)
-            for post in posts:
-                rewritten = await self.rewrite_post(post, channel.title)
-                if rewritten:
-                    await self.send_to_saved(rewritten, channel.title)
+            for post_text, post_message in posts:
+                rewritten = await self.rewrite_post(post_text, channel.title)
+                if rewritten and rewritten != "SKIP":
+                    await self.send_to_saved(rewritten, channel.title, post_message)
                     processed += 1
-                    await asyncio.sleep(2)  # avoid flood limits
+                elif rewritten == "SKIP":
+                    logger.info(f"⏭️ Skipped ad/vacancy post from {channel.title}")
+                await asyncio.sleep(AI_DELAY)  # pause between AI requests
 
         logger.info(f"✨ Done! Sent {processed} posts to Saved Messages")
         await self.client.disconnect()
 
     async def get_subscribed_channels(self) -> list:
-        """Get first 10 channels from user's subscriptions"""
+        """Get first N channels from subscriptions"""
         channels = []
-
         async for dialog in self.client.iter_dialogs():
             if len(channels) >= CHANNELS_LIMIT:
                 break
-            # Only channels (not groups, not private chats)
             if isinstance(dialog.entity, Channel) and not dialog.entity.megagroup:
                 channels.append(dialog.entity)
                 logger.info(f"  📢 {dialog.entity.title}")
-
         return channels
 
     async def get_recent_posts(self, channel) -> list:
-        """Get recent text posts from a channel"""
+        """Get recent text posts (with message object for media)"""
         posts = []
         try:
             async for message in self.client.iter_messages(channel, limit=POSTS_PER_CHANNEL):
-                # Only text posts (skip media-only, ads, forwarded)
-                if message.text and len(message.text) > 100 and not message.fwd_from:
-                    posts.append(message.text)
+                # Skip: too short, forwarded, no text
+                if not message.text or len(message.text) < 100:
+                    continue
+                if message.fwd_from:
+                    continue
+                posts.append((message.text, message))
         except Exception as e:
             logger.warning(f"⚠️ Could not read {channel.title}: {e}")
         return posts
 
     async def rewrite_post(self, text: str, source_title: str) -> str | None:
-        """Rewrite a post using AI"""
+        """Rewrite post via AI, return None on error"""
         try:
-            logger.info(f"🤖 Rewriting post from {source_title}...")
+            logger.info(f"🤖 Rewriting from {source_title}...")
             prompt = REWRITE_PROMPT.format(text=text[:2000])
             response = await self.ai.get_response(prompt, [])
-            return response
+
+            # If AI returned an error message — skip this post
+            if response.startswith("Sorry") or response.startswith("Error") or "All providers" in response:
+                logger.warning(f"❌ AI error for post from {source_title}: {response[:80]}")
+                return None
+
+            return response.strip()
         except Exception as e:
-            logger.error(f"Error rewriting: {e}")
+            logger.error(f"Rewrite error: {e}")
             return None
 
-    async def send_to_saved(self, text: str, source_title: str):
-        """Send rewritten post to Saved Messages"""
+    async def send_to_saved(self, text: str, source_title: str, original_message):
+        """Send rewritten post + original media to Saved Messages"""
         try:
-            header = f"📌 На основе: {source_title}\n\n"
-            await self.client.send_message("me", header + text)
-            logger.info(f"✅ Sent to Saved Messages")
+            header = f"📌 {source_title}\n\n"
+            full_text = header + text
+
+            has_media = original_message.media and isinstance(
+                original_message.media, (MessageMediaPhoto, MessageMediaDocument)
+            )
+
+            if has_media:
+                # Download media and send with rewritten caption
+                media_file = await self.client.download_media(original_message.media)
+                if media_file:
+                    await self.client.send_file("me", media_file, caption=full_text)
+                    # Clean up temp file
+                    try:
+                        os.remove(media_file)
+                    except Exception:
+                        pass
+                    logger.info(f"✅ Sent with media to Saved Messages")
+                    return
+
+            # Text only
+            await self.client.send_message("me", full_text)
+            logger.info(f"✅ Sent text to Saved Messages")
+
         except Exception as e:
-            logger.error(f"Error sending: {e}")
+            logger.error(f"Send error: {e}")
 
 
 async def main():
