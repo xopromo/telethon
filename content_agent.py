@@ -34,6 +34,7 @@ REWRITE_PROMPT = """Ты — редактор Telegram-канала про не�
 - Максимум 800 символов
 - Не упоминай источник
 - Не используй эмодзи вообще
+- Не используй хештеги
 - Не пиши вступления типа "Вот переписанный пост:"
 - Начинай сразу с контента
 - Ссылки: оставь только внешние источники (новости, исследования, сайты) — убери все ссылки на Telegram-каналы (t.me/...)
@@ -65,11 +66,15 @@ EMOJI_RE = re.compile(
 # Regex to strip t.me links (channel links)
 TG_LINK_RE = re.compile(r"https?://t\.me/\S+|@\w{5,}", re.IGNORECASE)
 
+# Regex to strip hashtags
+HASHTAG_RE = re.compile(r"#\w+", re.UNICODE)
+
 
 def clean_text(text: str) -> str:
-    """Remove emoji and Telegram channel links from text"""
+    """Remove emoji, Telegram channel links and hashtags from text"""
     text = EMOJI_RE.sub("", text)
     text = TG_LINK_RE.sub("", text)
+    text = HASHTAG_RE.sub("", text)
     # Clean up extra whitespace/newlines left after removals
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = re.sub(r" {2,}", " ", text)
