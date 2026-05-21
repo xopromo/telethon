@@ -14,7 +14,7 @@ import re
 import logging
 from telethon import TelegramClient
 from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
-from telethon.tl.functions.channels import CreateChannelRequest, GetForumTopicsRequest
+from telethon.tl.functions.channels import CreateChannelRequest
 from ai_providers import AIProviderChain, AdaptiveDelay
 from config import (
     TELEGRAM_API_ID,
@@ -68,10 +68,11 @@ INSIGHT_PROMPT = """Ты — эксперт по трейдингу. Напиш�
 
 
 class InsightsAgent:
-    def __init__(self, channel: str, topic: str | None, batch: int):
+    def __init__(self, channel: str, topic: str | None, batch: int, topic_id: int | None = None):
         self.channel_arg = channel
         self.topic_arg = topic
         self.batch = batch
+        self.topic_id_override = topic_id
 
         self.client = TelegramClient(SESSION_NAME, TELEGRAM_API_ID, TELEGRAM_API_HASH)
         api_key_map = {
@@ -112,8 +113,10 @@ class InsightsAgent:
         return group_id
 
     async def find_topic_id(self, channel, topic_name: str) -> int | None:
-        """Find topic ID by name (exact or partial match)."""
+        """Find topic ID by name. Tries API call first, falls back to scanning service messages."""
+        # Method 1: GetForumTopicsRequest (available in newer Telethon builds)
         try:
+            from telethon.tl.functions.channels import GetForumTopicsRequest
             result = await self.client(GetForumTopicsRequest(
                 channel=channel,
                 q="",
@@ -123,17 +126,28 @@ class InsightsAgent:
                 limit=100,
             ))
             topics = result.topics
-            # Exact match first
             for t in topics:
                 if t.title.lower() == topic_name.lower():
                     return t.id
-            # Partial match fallback
             for t in topics:
                 if topic_name.lower() in t.title.lower():
-                    logger.info(f"📌 Partial match: '{t.title}'")
+                    logger.info(f"📌 Partial match via API: '{t.title}'")
                     return t.id
         except Exception as e:
-            logger.warning(f"Could not list topics: {e}")
+            logger.info(f"GetForumTopicsRequest unavailable ({e}), scanning messages...")
+
+        # Method 2: scan recent service messages for MessageActionTopicCreate
+        try:
+            from telethon.tl.types import MessageActionTopicCreate
+            async for msg in self.client.iter_messages(channel, limit=2000):
+                action = getattr(msg, "action", None)
+                if isinstance(action, MessageActionTopicCreate):
+                    if topic_name.lower() in action.title.lower():
+                        logger.info(f"📌 Found topic via scan: '{action.title}' → ID {msg.id}")
+                        return msg.id
+        except Exception as e:
+            logger.warning(f"Topic scan failed: {e}")
+
         return None
 
     async def collect_batch(self, channel, topic_id: int | None, cursor_id: int, freeze_id: int) -> list:
@@ -248,7 +262,11 @@ class InsightsAgent:
 
         # Resolve topic
         topic_id = None
-        if self.topic_arg:
+        if self.topic_id_override:
+            topic_id = self.topic_id_override
+            ch["topic_id"] = topic_id
+            logger.info(f"📌 Topic ID (manual): {topic_id}")
+        elif self.topic_arg:
             topic_id = ch.get("topic_id")
             if not topic_id:
                 topic_id = await self.find_topic_id(channel, self.topic_arg)
@@ -256,7 +274,7 @@ class InsightsAgent:
                     ch["topic_id"] = topic_id
                     logger.info(f"📌 Topic '{self.topic_arg}' → ID {topic_id}")
                 else:
-                    logger.error(f"Topic '{self.topic_arg}' not found")
+                    logger.error(f"Topic '{self.topic_arg}' not found. Use --topic-id to specify manually.")
                     await self.client.disconnect()
                     return
 
@@ -328,11 +346,12 @@ async def main():
     )
     parser.add_argument("--channel", required=True, help="Channel username (e.g. VelesCommunityRu)")
     parser.add_argument("--topic", default=None, help="Topic name in forum channel")
+    parser.add_argument("--topic-id", type=int, default=None, help="Topic ID (manual override if auto-detection fails)")
     parser.add_argument("--batch", type=int, default=DEFAULT_BATCH, help="Posts per run (default 1000)")
     args = parser.parse_args()
 
     channel = args.channel.strip().replace("https://t.me/", "").strip("/")
-    agent = InsightsAgent(channel=channel, topic=args.topic, batch=args.batch)
+    agent = InsightsAgent(channel=channel, topic=args.topic, batch=args.batch, topic_id=args.topic_id)
     await agent.run()
 
 

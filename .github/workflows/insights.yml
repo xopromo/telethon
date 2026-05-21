@@ -15,6 +15,10 @@ on:
         description: 'Posts per run (default 1000)'
         required: false
         default: '1000'
+      topic_id:
+        description: 'Topic ID (manual override if auto-detection fails)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -64,10 +68,14 @@ jobs:
 
       - name: Run Insights Agent
         run: |
-          python insights_agent.py \
-            --channel "${{ github.event.inputs.channel }}" \
-            --topic "${{ github.event.inputs.topic }}" \
-            --batch "${{ github.event.inputs.batch }}"
+          ARGS="--channel ${{ github.event.inputs.channel }} --batch ${{ github.event.inputs.batch }}"
+          if [ -n "${{ github.event.inputs.topic }}" ]; then
+            ARGS="$ARGS --topic \"${{ github.event.inputs.topic }}\""
+          fi
+          if [ -n "${{ github.event.inputs.topic_id }}" ]; then
+            ARGS="$ARGS --topic-id ${{ github.event.inputs.topic_id }}"
+          fi
+          eval python insights_agent.py $ARGS
 
       - name: Save state back to repo
         if: always()
