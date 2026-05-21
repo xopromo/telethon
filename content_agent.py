@@ -41,7 +41,7 @@ REWRITE_PROMPT = """Ты — редактор Telegram-канала про не�
 
 POSTS_PER_CHANNEL = 3
 CHANNELS_LIMIT = 10
-AI_DELAY = 5  # seconds between AI requests to avoid rate limits
+AI_DELAY = 15  # seconds between AI requests to avoid rate limits
 
 
 class ContentAgent:
@@ -149,12 +149,6 @@ class ContentAgent:
             logger.info(f"🤖 Rewriting from {source_title}...")
             prompt = REWRITE_PROMPT.format(text=text[:2000])
             response = await self.ai.get_response(prompt, [])
-
-            # If AI returned an error message — skip this post
-            if response.startswith("Sorry") or response.startswith("Error") or "All providers" in response:
-                logger.warning(f"❌ AI error for post from {source_title}: {response[:80]}")
-                return None
-
             return response.strip()
         except Exception as e:
             logger.error(f"Rewrite error: {e}")

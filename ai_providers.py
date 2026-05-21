@@ -95,7 +95,7 @@ class MistralProvider(AIProvider):
 
         except Exception as e:
             logger.error(f"Mistral error: {e}")
-            return f"Error: {str(e)}"
+            raise  # Re-raise so AIProviderChain switches to next provider
 
 
 class CerebrasProvider(AIProvider):
@@ -139,7 +139,7 @@ class CerebrasProvider(AIProvider):
 
         except Exception as e:
             logger.error(f"Cerebras error: {e}")
-            return f"Error: {str(e)}"
+            raise  # Re-raise so AIProviderChain switches to next provider
 
 
 def get_ai_provider(provider_name: str, api_key: str, system_prompt: str) -> AIProvider:
