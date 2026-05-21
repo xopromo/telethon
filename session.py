@@ -2,8 +2,8 @@ import asyncio
 import base64
 from telethon import TelegramClient
 
-API_ID = 94575
-API_HASH = "a3406de8d12d27ecc61ff27eabe69fff"
+API_ID = 2040
+API_HASH = "b18441a1ff607e10a989891a5462e627"
 PHONE = "+79552230812"
 SESSION = "tg_session"
 
