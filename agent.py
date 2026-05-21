@@ -1,13 +1,13 @@
 import asyncio
 import logging
 from telethon import TelegramClient, events
-from ai_providers import get_ai_provider
+from ai_providers import AIProviderChain
 from config import (
     TELEGRAM_API_ID,
     TELEGRAM_API_HASH,
     TELEGRAM_PHONE,
     SESSION_NAME,
-    AI_PROVIDER,
+    PROVIDER_PRIORITY,
     GEMINI_API_KEY,
     MISTRAL_API_KEY,
     CEREBRAS_API_KEY,
@@ -23,22 +23,21 @@ class TelegramAIAgent:
         self.client = TelegramClient(SESSION_NAME, TELEGRAM_API_ID, TELEGRAM_API_HASH)
         self.conversation_history = {}  # Store conversation context per user
 
-        # Initialize AI provider
+        # Initialize AI provider chain with fallback
         api_key_map = {
-            "gemini": GEMINI_API_KEY,
             "mistral": MISTRAL_API_KEY,
+            "gemini": GEMINI_API_KEY,
             "cerebras": CEREBRAS_API_KEY,
         }
 
-        api_key = api_key_map.get(AI_PROVIDER.lower())
-        if not api_key:
-            raise ValueError(
-                f"API key for {AI_PROVIDER} not found. "
-                f"Please set the appropriate API key in .env file"
-            )
+        # Build provider list in priority order
+        providers_config = [
+            (provider, api_key_map.get(provider))
+            for provider in PROVIDER_PRIORITY
+        ]
 
-        self.ai_provider = get_ai_provider(AI_PROVIDER, api_key, SYSTEM_PROMPT)
-        logger.info(f"✨ Using {AI_PROVIDER.upper()} as AI provider")
+        self.ai_provider = AIProviderChain(providers_config, SYSTEM_PROMPT)
+        logger.info(f"✨ AI Agent initialized with {len(providers_config)} providers")
 
     async def start(self):
         """Start the Telegram client and connect"""

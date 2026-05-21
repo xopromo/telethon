@@ -1,9 +1,12 @@
-"""AI provider implementations"""
+"""AI provider implementations with failover support"""
 import logging
 from abc import ABC, abstractmethod
 import requests
 
 logger = logging.getLogger(__name__)
+
+# Store last working provider
+_last_working_provider = None
 
 
 class AIProvider(ABC):
@@ -151,3 +154,49 @@ def get_ai_provider(provider_name: str, api_key: str, system_prompt: str) -> AIP
         return CerebrasProvider(api_key, system_prompt)
     else:
         raise ValueError(f"Unknown AI provider: {provider_name}")
+
+
+class AIProviderChain:
+    """Multi-provider with automatic failover"""
+
+    def __init__(self, providers_config: list, system_prompt: str):
+        """
+        providers_config: list of tuples (provider_name, api_key)
+        Example: [('mistral', 'key1'), ('gemini', 'key2'), ('cerebras', 'key3')]
+        """
+        self.providers = []
+        self.system_prompt = system_prompt
+
+        for provider_name, api_key in providers_config:
+            if api_key and api_key != 'None':
+                try:
+                    provider = get_ai_provider(provider_name, api_key, system_prompt)
+                    self.providers.append((provider_name, provider))
+                    logger.info(f"✅ Loaded {provider_name} provider")
+                except Exception as e:
+                    logger.warning(f"⚠️  Failed to load {provider_name}: {e}")
+
+        if not self.providers:
+            raise ValueError("No valid AI providers configured!")
+
+        logger.info(f"📋 Provider chain: {[p[0] for p in self.providers]}")
+
+    async def get_response(self, user_message: str, conversation_history: list) -> str:
+        """Try providers in order, fallback to next on failure"""
+        last_error = None
+
+        for provider_name, provider in self.providers:
+            try:
+                logger.info(f"🤖 Trying {provider_name}...")
+                response = await provider.get_response(user_message, conversation_history)
+                logger.info(f"✅ {provider_name} succeeded")
+                return response
+            except Exception as e:
+                logger.warning(f"❌ {provider_name} failed: {e}")
+                last_error = e
+                continue
+
+        # All providers failed
+        error_msg = f"All providers failed. Last error: {str(last_error)}"
+        logger.error(error_msg)
+        return f"Sorry, all AI providers are unavailable: {str(last_error)}"

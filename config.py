@@ -10,17 +10,13 @@ TELEGRAM_PHONE = os.getenv('TELEGRAM_PHONE', '')
 BOT_USERNAME = os.getenv('BOT_USERNAME', '')
 SESSION_NAME = os.getenv('SESSION_NAME', 'telegram_session')
 
-# AI Provider configuration
-AI_PROVIDER = os.getenv('AI_PROVIDER', 'gemini').lower()  # gemini, mistral, cerebras
+# API Keys
+MISTRAL_API_KEY = os.getenv('MISTRAL_API_KEY', 'Mistral_key_here')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', 'Gemini_key_here')
+CEREBRAS_API_KEY = os.getenv('CEREBRAS_API_KEY', 'Cerebras_key_here')
 
-# Gemini API
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
-
-# Mistral API
-MISTRAL_API_KEY = os.getenv('MISTRAL_API_KEY', '')
-
-# Cerebras API
-CEREBRAS_API_KEY = os.getenv('CEREBRAS_API_KEY', '')
+# Provider fallback order: try providers in this order, fallback to next if one fails
+PROVIDER_PRIORITY = ['mistral', 'gemini', 'cerebras']
 
 # System prompt for AI
 SYSTEM_PROMPT = """You are a helpful AI assistant integrated into Telegram.

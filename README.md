@@ -1,12 +1,16 @@
 # Telegram AI Agent
 
-Personal AI assistant for Telegram powered by free AI providers (Gemini, Mistral, or Cerebras) and Telethon library.
+Personal AI assistant for Telegram with automatic failover between multiple free AI providers.
 
-## Supported AI Providers
+## AI Provider Fallback System
 
-- **Google Gemini** (free) - Most capable, good for general tasks
-- **Mistral** (free tier) - Fast and reliable
-- **Cerebras** (free) - Very fast inference
+Agent tries providers in order, automatically switching if one fails:
+
+1. **Mistral** (primary) - Fast and reliable
+2. **Google Gemini** (fallback #1) - Most capable
+3. **Cerebras** (fallback #2) - Very fast inference
+
+**Example:** If Mistral is down, automatically switches to Gemini. If Gemini fails too, tries Cerebras.
 
 ## Setup
 
