@@ -140,16 +140,19 @@ class DigestAgent:
         sentences = [s.strip().lower() for s in sentences if len(s.strip()) >= 30][:3]
         return [hashlib.md5(s.encode()).hexdigest()[:8] for s in sentences]
 
-    def seen_similar_post(self, seen_posts: dict, channel_id: int, text: str) -> bool:
+    def count_matching_sentences(self, seen_posts: dict, text: str) -> int:
+        """Count how many sentence hashes of text match any previously seen post"""
         new_hashes = set(self.sentence_hashes(text))
         if not new_hashes:
-            return False
+            return 0
+        max_matches = 0
         for channel_data in seen_posts.values():
             for stored_hashes in channel_data.values():
                 if isinstance(stored_hashes, list):
-                    if new_hashes & set(stored_hashes):
-                        return True
-        return False
+                    matches = len(new_hashes & set(stored_hashes))
+                    if matches > max_matches:
+                        max_matches = matches
+        return max_matches
 
     def record_post(self, seen_posts: dict, channel_id: int, message_id: int, text: str):
         channel_key = str(channel_id)
@@ -233,18 +236,20 @@ class DigestAgent:
                     if message.fwd_from:
                         continue
 
-                    # Skip if similar post seen before
-                    if self.seen_similar_post(seen_posts, channel.id, message.text):
-                        logger.info(f"⏭ Duplicate skipped in {channel.title}")
+                    # 2+ sentence matches = exact duplicate, skip
+                    # 1 sentence match = partial, include for grouping only
+                    match_count = self.count_matching_sentences(seen_posts, message.text)
+                    if match_count >= 2:
+                        logger.info(f"⏭ Exact duplicate skipped in {channel.title}")
                         continue
 
                     all_posts.append({
                         "text": message.text,
                         "channel": channel.title,
                         "date": message.date.isoformat(),
+                        "partial": match_count == 1,
                     })
 
-                    # Record that we've seen this
                     self.record_post(seen_posts, channel.id, message.id, message.text)
             except Exception as e:
                 logger.warning(f"⚠️ Could not read {channel.title}: {e}")

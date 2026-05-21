@@ -175,22 +175,19 @@ class ContentAgent:
         sentences = [s.strip().lower() for s in sentences if len(s.strip()) >= 30][:3]
         return [hashlib.md5(s.encode()).hexdigest()[:8] for s in sentences]
 
-    def seen_similar_post(self, seen_posts: dict, channel_id: int, text: str) -> bool:
-        """Return True if any sentence hash matches a previously seen post"""
+    def count_matching_sentences(self, seen_posts: dict, text: str) -> int:
+        """Count how many sentence hashes of text match any previously seen post"""
         new_hashes = set(self.sentence_hashes(text))
         if not new_hashes:
-            return False
-
-        # Check against ALL channels (not just same channel — cross-channel dedup)
+            return 0
+        max_matches = 0
         for channel_data in seen_posts.values():
             for stored_hashes in channel_data.values():
                 if isinstance(stored_hashes, list):
-                    if new_hashes & set(stored_hashes):  # any intersection
-                        return True
-                else:
-                    # Legacy single-hash format — skip
-                    pass
-        return False
+                    matches = len(new_hashes & set(stored_hashes))
+                    if matches > max_matches:
+                        max_matches = matches
+        return max_matches
 
     def record_post(self, seen_posts: dict, channel_id: int, message_id: int, text: str):
         """Store sentence hashes for this post"""
@@ -257,6 +254,12 @@ class ContentAgent:
             if i in grouped_indices:
                 continue  # already handled above
 
+            # Partial matches only appear in digests; skip alone
+            if post.get("partial"):
+                self.mark_processed(processed_ids, post["channel_id"], post["message_id"])
+                logger.info(f"⏭ Partial match not published alone: {post['channel']}")
+                continue
+
             result = await self.rewrite_post(post)
             if result and result.strip() != "SKIP":
                 await self.send_post(result, post)
@@ -299,9 +302,11 @@ class ContentAgent:
                     if self.is_processed(processed_ids, channel.id, message.id):
                         continue
 
-                    # Skip if similar post seen before (dedup)
-                    if self.seen_similar_post(seen_posts, channel.id, message.text):
-                        logger.info(f"⏭ Duplicate/similar post skipped in {channel.title}")
+                    # Dedup: 2+ sentence matches = exact duplicate, skip
+                    # 1 sentence match = partial, allow but flag for grouping only
+                    match_count = self.count_matching_sentences(seen_posts, message.text)
+                    if match_count >= 2:
+                        logger.info(f"⏭ Exact duplicate skipped in {channel.title}")
                         continue
 
                     posts.append({
@@ -310,9 +315,9 @@ class ContentAgent:
                         "channel_id": channel.id,
                         "message_id": message.id,
                         "message_obj": message,
+                        "partial": match_count == 1,
                     })
 
-                    # Record that we've seen this post
                     self.record_post(seen_posts, channel.id, message.id, message.text)
             except Exception as e:
                 logger.warning(f"⚠️ Could not read {channel.title}: {e}")
