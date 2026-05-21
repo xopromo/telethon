@@ -1,0 +1,64 @@
+name: Telegram Digest Agent
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:        # Also allow manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  run-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install telethon==1.43.2 python-dotenv requests google-generativeai
+
+      - name: Restore Telegram session
+        env:
+          SESSION_BASE64: ${{ secrets.SESSION_BASE64 }}
+        run: |
+          if [ -n "$SESSION_BASE64" ]; then
+            echo "$SESSION_BASE64" | base64 -d > telegram_session.session
+            echo "Session restored ✅"
+          else
+            echo "No session found"
+            exit 1
+          fi
+
+      - name: Create .env file
+        run: |
+          cat > .env << EOF
+          TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
+          MISTRAL_API_KEY=${{ secrets.MISTRAL_API_KEY }}
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          CEREBRAS_API_KEY=${{ secrets.CEREBRAS_API_KEY }}
+          SESSION_NAME=telegram_session
+          EOF
+
+      - name: Run Digest Agent
+        run: python digest_agent.py
+
+      - name: Save processed topics back to repo
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add processed_topics.json
+          git diff --staged --quiet || git commit -m "Update processed topics [skip ci]"
+          git push
