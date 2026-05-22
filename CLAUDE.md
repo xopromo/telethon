@@ -5,7 +5,7 @@ Personal Telegram agent that monitors subscribed channels, rewrites posts via AI
 ## Architecture
 
 Three independent agents:
-- **content_agent.py** — manual run, fetches latest posts per channel, rewrites singles, merges similar into mini-digests
+- **content_agent.py** — manual run, fetches latest posts per channel, auto-detects channel topic, rewrites singles contextually, merges similar into mini-digests
 - **digest_agent.py** — runs every 6h via cron, collects posts from last 24h, writes full articles for groups of 3+
 - **insights_agent.py** — CLI tool, reads historical posts from a channel/topic (newest→oldest in batches), filters valuable insights via AI, publishes to a private group
 

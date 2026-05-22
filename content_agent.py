@@ -55,9 +55,9 @@ GROUPING_PROMPT = """Вот свежие посты из разных Telegram-�
 - Название темы — 3-6 слов на русском
 - Если нет подходящих групп — верни пустой объект {{}}"""
 
-REWRITE_PROMPT = """Ты — редактор Telegram-канала про нейросети и технологии.
+REWRITE_PROMPT_TEMPLATE = """Ты — редактор моего Telegram-канала. Канал о: {channel_topic}.
 
-Перепиши этот пост для моего канала:
+Перепиши этот пост для канала:
 - Сохрани суть и факты
 - Сделай текст живым и интересным
 - Пиши на русском языке
@@ -69,16 +69,16 @@ REWRITE_PROMPT = """Ты — редактор Telegram-канала про не�
 - Если реклама или вакансия — ответь только: SKIP
 
 Пост:
-{text}"""
+{{text}}"""
 
-MINI_DIGEST_PROMPT = """Ты — редактор Telegram-канала про нейросети и технологии.
+MINI_DIGEST_PROMPT_TEMPLATE = """Ты — редактор моего Telegram-канала. Канал о: {channel_topic}.
 
-Проверь, действительно ли эти посты об одном и том же событии, и если да — напиши один короткий пост.
+Проверь, действительно ли эти посты об одном и том же событии в рамках темы канала, и если да — напиши один короткий пост.
 
-Тема: {topic}
+Тема: {{topic}}
 
 Посты:
-{posts_text}
+{{posts_text}}
 
 Требования:
 - Сначала убедись, что все посты об одном конкретном событии/продукте/анонсе
@@ -205,6 +205,33 @@ class ContentAgent:
         # Keep last 300 posts per channel
         seen_posts[channel_key] = dict(list(seen_posts[channel_key].items())[-300:])
 
+    # ── Channel topic detection ────────────────────────────────────────────────
+
+    async def detect_channel_topic(self, channel, sample_messages: list) -> str:
+        """Detect channel topic from sample messages"""
+        sample_text = "\n".join(
+            f"- {m.text[:100].strip()}"
+            for m in sample_messages[:10]
+            if m.text
+        )
+        if not sample_text:
+            return "General"
+
+        prompt = f"""Посмотри на эти посты из канала "{channel.title}" и определи основную тематику в 1-2 словах.
+
+Посты:
+{sample_text}
+
+Ответь только тему (2-3 слова на русском), без объяснений."""
+
+        try:
+            response = await self.ai.get_response(prompt, [], delay=self.delay)
+            topic = response.strip().strip('"').strip("'")[:50]
+            return topic if topic else "General"
+        except Exception as e:
+            logger.warning(f"Topic detection failed for {channel.title}: {e}")
+            return "General"
+
     # ── Main flow ──────────────────────────────────────────────────────────────
 
     async def run(self):
@@ -309,6 +336,22 @@ class ContentAgent:
             channels_found += 1
             logger.info(f"  📢 {channel.title}")
 
+            # Detect channel topic on first encounter
+            channel_key = str(channel.id)
+            if "_topics" not in processed_ids:
+                processed_ids["_topics"] = {}
+            if channel_key not in processed_ids["_topics"]:
+                # Collect sample messages for topic detection
+                sample_msgs = []
+                async for msg in self.client.iter_messages(channel, limit=20):
+                    if msg.text:
+                        sample_msgs.append(msg)
+                channel_topic = await self.detect_channel_topic(channel, sample_msgs)
+                processed_ids["_topics"][channel_key] = channel_topic
+                logger.info(f"🏷 Topic: {channel_topic}")
+            else:
+                channel_topic = processed_ids["_topics"][channel_key]
+
             try:
                 async for message in self.client.iter_messages(channel, limit=POSTS_PER_CHANNEL):
                     if not message.text or len(message.text) < 100:
@@ -334,6 +377,7 @@ class ContentAgent:
                         "message_id": message.id,
                         "message_obj": message,
                         "partial": match_count == 1,
+                        "channel_topic": channel_topic,
                     })
 
                     self.record_post(seen_posts, channel.id, message.id, message.text)
@@ -376,7 +420,9 @@ class ContentAgent:
             f"Канал: {p['channel']}\n{p['text'][:600]}"
             for p in posts
         )
-        prompt = MINI_DIGEST_PROMPT.format(topic=topic, posts_text=posts_text)
+        channel_topic = posts[0].get("channel_topic", "General") if posts else "General"
+        mini_digest_prompt = MINI_DIGEST_PROMPT_TEMPLATE.format(channel_topic=channel_topic)
+        prompt = mini_digest_prompt.format(topic=topic, posts_text=posts_text)
         try:
             logger.info(f"📰 Mini-digest: '{topic}' ({len(posts)} posts)")
             response = await self.ai.get_response(prompt, [], delay=self.delay)
@@ -386,7 +432,9 @@ class ContentAgent:
             return None
 
     async def rewrite_post(self, post: dict) -> str | None:
-        prompt = REWRITE_PROMPT.format(text=post["text"][:2000])
+        channel_topic = post.get("channel_topic", "General")
+        rewrite_prompt = REWRITE_PROMPT_TEMPLATE.format(channel_topic=channel_topic)
+        prompt = rewrite_prompt.format(text=post["text"][:2000])
         try:
             logger.info(f"✏️ Rewriting from {post['channel']}")
             response = await self.ai.get_response(prompt, [], delay=self.delay)
