@@ -292,12 +292,6 @@ class ContentAgent:
             if i in grouped_indices:
                 continue  # already handled above
 
-            # Partial matches only appear in digests; skip alone
-            if post.get("partial"):
-                self.mark_processed(processed_ids, post["channel_id"], post["message_id"])
-                logger.info(f"⏭ Partial match not published alone: {post['channel']}")
-                continue
-
             result = await self.rewrite_post(post)
             if result and result.strip() != "SKIP":
                 await self.send_post(result, post)
