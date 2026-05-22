@@ -59,8 +59,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin
-          git merge origin/claude/telethon-telegram-ai-agent-BEWcw || true
           git add processed_topics.json all_seen_posts.json
           git diff --staged --quiet || git commit -m "Update post tracking [skip ci]"
+          git pull --no-rebase origin claude/telethon-telegram-ai-agent-BEWcw || true
           git push
