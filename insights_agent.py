@@ -33,46 +33,50 @@ INSIGHTS_STATE_FILE = "insights_state.json"
 DEFAULT_BATCH = 1000
 FILTER_CHUNK = 50  # posts per AI filtering call
 
-BATCH_FILTER_PROMPT = """Ты — эксперт по трейдингу криптовалют. Вот {n} сообщений из трейдингового сообщества.
+BATCH_FILTER_PROMPT_TEMPLATE = """Ты — эксперт в области: {topics}. Вот {{n}} сообщений из канала на эту тематику.
 
 Сообщения:
-{posts_list}
+{{posts_list}}
 
-Выбери только сообщения с реально ценными инсайтами или стратегиями.
+Выбери только сообщения с реально ценными инсайтами, стратегиями или находками.
 Верни ТОЛЬКО валидный JSON-список номеров: [1, 7, 23]
 Если ценных нет — верни: []
 
 Ценно:
-- Конкретная торговая стратегия или тактика с деталями
-- Технический анализ с объяснением логики
+- Конкретные идеи, стратегии или тактики с деталями
+- Анализ с объяснением логики
 - Практический опыт: что сработало и почему
-- Нестандартный инсайт, находка или наблюдение о рынке
+- Нестандартный инсайт или находка
 
 Не ценно:
-- Общие слова ("крипта растёт", "HODL")
-- Вопросы без ответа, флуд, смол-ток
-- Реклама, ссылки на сторонние сервисы
+- Общие слова без конкретики
+- Вопросы без ответа, флуд
+- Реклама
 - Простые реакции и приветствия"""
 
-INSIGHT_PROMPT = """Ты — эксперт по трейдингу. Напиши краткий инсайт на основе этого поста из трейдингового сообщества.
+INSIGHT_PROMPT_TEMPLATE = """Ты — эксперт в области: {topics}.
+Напиши краткий инсайт на основе этого поста.
 
 Пост:
-{text}
+{{text}}
 
 Требования:
 - Выдели главную идею, стратегию или находку
-- Объясни практическую ценность
+- Объясни практическую ценность и применимость
 - Пиши на русском языке, 2-4 предложения
 - Без эмодзи и хештегов
 - Начинай сразу с сути"""
 
 
+
 class InsightsAgent:
-    def __init__(self, channel: str, topic: str | None, batch: int, topic_id: int | None = None):
+    def __init__(self, channel: str, topic: str | None, batch: int, topic_id: int | None = None, redetect_topics: bool = False):
         self.channel_arg = channel
         self.topic_arg = topic
         self.batch = batch
         self.topic_id_override = topic_id
+        self.redetect_topics = redetect_topics
+        self.detected_topics: list[str] = []
 
         self.client = TelegramClient(SESSION_NAME, TELEGRAM_API_ID, TELEGRAM_API_HASH)
         api_key_map = {
@@ -150,6 +154,51 @@ class InsightsAgent:
 
         return None
 
+    async def detect_channel_topics(self, channel, topic_id: int | None) -> list[str]:
+        """Detect main topics/themes of the channel from recent posts"""
+        logger.info("🔍 Detecting channel topics from last 50 posts...")
+
+        posts_sample = []
+        kwargs = {"limit": 50}
+        if topic_id:
+            kwargs["reply_to"] = topic_id
+
+        async for msg in self.client.iter_messages(channel, **kwargs):
+            if msg.text and len(msg.text) >= 50:
+                posts_sample.append(msg.text[:150])
+            if len(posts_sample) >= 50:
+                break
+
+        if not posts_sample:
+            logger.warning("No posts to analyze for topic detection")
+            return ["General"]
+
+        sample_text = "\n".join(f"- {p}" for p in posts_sample[:20])
+        prompt = f"""Посмотри на эти посты из канала "{channel.title}" и определи 1-3 основные тематики.
+
+Посты:
+{sample_text}
+
+Ответь в формате JSON:
+{{"topics": ["Тема 1", "Тема 2"]}}
+
+Не подробно, только список тем."""
+
+        try:
+            response = await self.ai.get_response(prompt, [], delay=self.delay)
+            match = re.search(r'\{"topics":\s*\[(.*?)\]', response, re.DOTALL)
+            if match:
+                topics_str = match.group(1)
+                topics = [t.strip().strip('"') for t in topics_str.split(",")]
+                topics = [t for t in topics if t]
+                if topics:
+                    logger.info(f"✅ Detected topics: {', '.join(topics)}")
+                    return topics
+        except Exception as e:
+            logger.warning(f"Topic detection failed: {e}")
+
+        return ["General"]
+
     async def collect_batch(self, channel, topic_id: int | None, cursor_id: int, freeze_id: int) -> list:
         """Collect up to self.batch posts going backwards from cursor_id."""
         posts = []
@@ -184,13 +233,16 @@ class InsightsAgent:
     async def filter_valuable(self, posts: list) -> list:
         """Send chunk of posts to AI, return only the valuable ones."""
         valuable = []
+        topics = ", ".join(self.detected_topics)
+        batch_filter_prompt = BATCH_FILTER_PROMPT_TEMPLATE.format(topics=topics)
+
         for i in range(0, len(posts), FILTER_CHUNK):
             chunk = posts[i:i + FILTER_CHUNK]
             posts_list = "\n".join(
                 f"{j + 1}. {p['text'][:200].strip()}"
                 for j, p in enumerate(chunk)
             )
-            prompt = BATCH_FILTER_PROMPT.format(n=len(chunk), posts_list=posts_list)
+            prompt = batch_filter_prompt.format(n=len(chunk), posts_list=posts_list)
             try:
                 response = await self.ai.get_response(prompt, [], delay=self.delay)
                 match = re.search(r"\[.*?\]", response, re.DOTALL)
@@ -206,7 +258,9 @@ class InsightsAgent:
         return valuable
 
     async def generate_insight(self, post: dict) -> str | None:
-        prompt = INSIGHT_PROMPT.format(text=post["text"][:2000])
+        topics = ", ".join(self.detected_topics)
+        insight_prompt = INSIGHT_PROMPT_TEMPLATE.format(topics=topics)
+        prompt = insight_prompt.format(text=post["text"][:2000])
         try:
             response = await self.ai.get_response(prompt, [], delay=self.delay)
             return response.strip()
@@ -290,6 +344,13 @@ class InsightsAgent:
                 ch["total_published"] = 0
             logger.info(f"🧊 Freeze point: ID {ch['freeze_id']}")
 
+        # Detect channel topics
+        if "topics" not in ch or self.redetect_topics:
+            self.detected_topics = await self.detect_channel_topics(channel, topic_id)
+            ch["topics"] = self.detected_topics
+        else:
+            self.detected_topics = ch.get("topics", ["General"])
+
         freeze_id = ch["freeze_id"]
         cursor_id = ch.get("cursor_id", freeze_id)
 
@@ -348,10 +409,11 @@ async def main():
     parser.add_argument("--topic", default=None, help="Topic name in forum channel")
     parser.add_argument("--topic-id", type=int, default=None, help="Topic ID (manual override if auto-detection fails)")
     parser.add_argument("--batch", type=int, default=DEFAULT_BATCH, help="Posts per run (default 1000)")
+    parser.add_argument("--redetect-topic", action="store_true", help="Re-detect channel topics (force update)")
     args = parser.parse_args()
 
     channel = args.channel.strip().replace("https://t.me/", "").strip("/")
-    agent = InsightsAgent(channel=channel, topic=args.topic, batch=args.batch, topic_id=args.topic_id)
+    agent = InsightsAgent(channel=channel, topic=args.topic, batch=args.batch, topic_id=args.topic_id, redetect_topics=args.redetect_topic)
     await agent.run()
 
 

@@ -19,6 +19,10 @@ on:
         description: 'Topic ID (manual override)'
         required: false
         default: '230358'
+      redetect_topic:
+        description: 'Re-detect channel topics (force update)'
+        required: false
+        default: 'false'
 
 permissions:
   contents: write
@@ -74,6 +78,9 @@ jobs:
           fi
           if [ -n "${{ github.event.inputs.topic_id }}" ]; then
             ARGS="$ARGS --topic-id ${{ github.event.inputs.topic_id }}"
+          fi
+          if [ "${{ github.event.inputs.redetect_topic }}" = "true" ]; then
+            ARGS="$ARGS --redetect-topic"
           fi
           eval python insights_agent.py $ARGS
 

@@ -68,18 +68,27 @@ Each published item is **two messages**:
 
 CLI usage:
 ```
-python insights_agent.py --channel VelesCommunityRu --topic "Pro трейдинг"
-python insights_agent.py --channel VelesCommunityRu --topic "Pro трейдинг" --batch 500
+python insights_agent.py --channel VelesCommunityRu --topic-id 230358
+python insights_agent.py --channel VelesCommunityRu --topic-id 230358 --batch 500
+python insights_agent.py --channel VelesCommunityRu --topic-id 230358 --redetect-topic
 ```
 
+**Auto-topic detection:** On first run, reads last 50 posts from channel/topic and asks AI to detect 1-3 main themes. Themes are saved and reused for all subsequent filtering and insight generation, making them contextual and relevant.
+
 State stored in `insights_state.json` per channel:
-- `freeze_id` — max message ID at first run; newer posts are ignored during history traversal
-- `cursor_id` — current position going backwards; 0 = history exhausted
+- `freeze_id` — max message ID at first run; newer posts are ignored
+- `cursor_id` — current position (going backwards); 0 = exhausted
 - `topic_id` — cached forum topic ID
-- `output_group_id` — auto-created private megagroup for publishing
+- `topics` — auto-detected channel themes (1-3 items); regenerated on `--redetect-topic`
+- `output_group_id` — auto-created private megagroup
 - `total_processed` / `total_published` — cumulative counters
 
-Flow per run: collect batch → filter in chunks of 50 via AI → generate insight per valuable post → publish (insight + original text + link, with media if present)
+Flow per run:
+1. Detect channel topics (AI reads 50 posts, determines themes)
+2. Collect batch from history
+3. Filter posts relevant to detected topics
+4. Generate insights (AI is aware of topics)
+5. Publish (insight + original + link + media)
 
 ## Text cleanup (clean_text)
 
