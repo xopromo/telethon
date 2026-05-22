@@ -38,6 +38,12 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Sync with remote
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --no-rebase origin claude/telethon-telegram-ai-agent-BEWcw || true
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -87,13 +93,9 @@ jobs:
       - name: Save state back to repo
         if: always()
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           if [ -f insights_state.json ]; then
             git add insights_state.json
-            git diff --staged --quiet || git commit -m "Update insights state [skip ci]"
+            git diff --staged --quiet || git commit -m "Update insights state [skip ci]" && git push || true
           else
             echo "No state file created yet"
           fi
-          git pull --no-rebase origin claude/telethon-telegram-ai-agent-BEWcw || true
-          git push
