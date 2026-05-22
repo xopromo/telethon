@@ -314,6 +314,8 @@ class ContentAgent:
         posts = []
         channels_found = 0
         channels_skipped = 0
+        short_posts = 0
+        duplicates = 0
 
         async for dialog in self.client.iter_dialogs():
             if channels_found >= CHANNELS_LIMIT:
@@ -349,6 +351,7 @@ class ContentAgent:
             try:
                 async for message in self.client.iter_messages(channel, limit=POSTS_PER_CHANNEL):
                     if not message.text or len(message.text) < 100:
+                        short_posts += 1
                         continue
                     if message.fwd_from:
                         continue
@@ -361,7 +364,7 @@ class ContentAgent:
                     # 1 sentence match = partial, allow but flag for grouping only
                     match_count = self.count_matching_sentences(seen_posts, message.text)
                     if match_count >= 2:
-                        logger.info(f"⏭ Exact duplicate skipped in {channel.title}")
+                        duplicates += 1
                         continue
 
                     posts.append({
@@ -380,6 +383,7 @@ class ContentAgent:
 
         # Next run starts after the channels we just processed; reset when exhausted
         next_offset = offset + channels_found if channels_found >= CHANNELS_LIMIT else 0
+        logger.info(f"🔄 Skipped: {short_posts} short, {duplicates} exact duplicates")
         logger.info(f"🔄 Next offset will be: {next_offset}")
         return posts, next_offset
 
