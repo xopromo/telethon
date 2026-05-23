@@ -68,6 +68,12 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "Instagram Downloader Bot"
+          
+          # Create file if it doesn't exist
+          if [ ! -f processed_instagram.json ]; then
+            echo '{"urls": []}' > processed_instagram.json
+          fi
+          
           git add processed_instagram.json
           git commit -m "Auto: Download from ${{ inputs.instagram_url }}" --allow-empty
           git push || echo "Nothing to push"
