@@ -275,14 +275,9 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    showMessage(`✅ Issue создана! GitHub Actions начал скачивать видео 🚀\n\nЗатем можешь посмотреть статус в репо или артефактах.`, 'success');
+                    showMessage(`✅ Issue создана! GitHub Actions начал скачивать видео 🚀\n\nПроверь артефакты в GitHub Actions когда видео будет готово!`, 'success');
                     urlInput.value = '';
                     checkLimit();
-
-                    // Open issue in new tab (optional)
-                    setTimeout(() => {
-                        window.open(data.issue_url, '_blank');
-                    }, 1500);
                 } else {
                     showMessage(`❌ Ошибка: ${data.error}`, 'error');
                 }
