@@ -82,7 +82,6 @@ EMOJI_RE = re.compile(
 
 
 def clean_text(text: str) -> str:
-    """Remove emoji, hashtags, @mentions, and t.me links"""
     text = EMOJI_RE.sub(" ", text)
     text = re.sub(r"#\w+", "", text)
     text = re.sub(r"@[a-zA-Z0-9_]{5,}", "", text)
@@ -93,7 +92,6 @@ def clean_text(text: str) -> str:
 
 
 def load_processed_instagram() -> dict:
-    """Load processed Instagram URLs"""
     if os.path.exists(PROCESSED_INSTAGRAM_FILE):
         with open(PROCESSED_INSTAGRAM_FILE) as f:
             return json.load(f)
@@ -101,13 +99,11 @@ def load_processed_instagram() -> dict:
 
 
 def save_processed_instagram(data: dict):
-    """Save processed Instagram URLs"""
     with open(PROCESSED_INSTAGRAM_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
 
 def extract_instagram_urls(text: str) -> list[str]:
-    """Extract Instagram URLs from text"""
     if not text:
         return []
     pattern = r"https?://(?:www\.)?instagram\.com/[a-zA-Z0-9_/-]+"
@@ -115,7 +111,6 @@ def extract_instagram_urls(text: str) -> list[str]:
 
 
 async def get_instagram_info(url: str, downloader: InstagramDownloader) -> Optional[dict]:
-    """Get Instagram video metadata"""
     try:
         info = downloader.get_info(url)
         if info:
@@ -129,7 +124,6 @@ async def get_instagram_info(url: str, downloader: InstagramDownloader) -> Optio
 async def rewrite_instagram_description(
     title: str, uploader: str, ai_chain: AIProviderChain
 ) -> Optional[str]:
-    """Rewrite Instagram video description via AI"""
     input_text = f"{title} (by {uploader})"
     prompt = INSTAGRAM_REWRITE_PROMPT.format(text=input_text)
 
@@ -147,7 +141,6 @@ async def rewrite_instagram_description(
 
 
 async def download_instagram_video(url: str, downloader: InstagramDownloader) -> Optional[str]:
-    """Download Instagram video, return file path or None"""
     try:
         file_path = downloader.download_reel(url)
         if file_path and os.path.exists(file_path):
@@ -168,10 +161,8 @@ async def process_instagram_url(
     ai_chain: AIProviderChain,
     downloader: InstagramDownloader,
 ) -> bool:
-    """Process single Instagram URL: download → rewrite → publish"""
     logger.info(f"Processing: {url}")
 
-    # Get metadata
     info = await get_instagram_info(url, downloader)
     if not info:
         logger.warning(f"⏭️ Skipped (no metadata): {url}")
@@ -181,19 +172,16 @@ async def process_instagram_url(
     uploader = info.get("uploader", "Unknown")
     duration = info.get("duration", 0)
 
-    # Rewrite description
     rewritten = await rewrite_instagram_description(title, uploader, ai_chain)
     if not rewritten:
         logger.warning(f"⏭️ Skipped by AI filter")
         return False
 
-    # Download video
     video_path = await download_instagram_video(url, downloader)
     if not video_path:
         logger.warning(f"⏭️ Failed to download video")
         return False
 
-    # Publish to Saved Messages
     try:
         caption = f"""<b>{rewritten}</b>
 
@@ -204,8 +192,6 @@ By: {uploader}
 
         await client.send_file("me", video_path, caption=caption, parse_mode="html")
         logger.info(f"✅ Published to Saved Messages")
-
-        # Cleanup
         os.remove(video_path)
         return True
 
@@ -215,10 +201,8 @@ By: {uploader}
 
 
 async def main(url: Optional[str] = None):
-    """Main agent: process single URL or monitor channel"""
     logger.info("🚀 Instagram Agent starting...")
 
-    # Initialize
     downloader = InstagramDownloader(output_dir=INSTAGRAM_OUTPUT_DIR)
     ai_chain = AIProviderChain(
         api_keys={
@@ -226,7 +210,7 @@ async def main(url: Optional[str] = None):
             "gemini": GEMINI_API_KEY,
             "cerebras": CEREBRAS_API_KEY,
         },
-        delay=AdaptiveDelay(initial_delay=1.0),
+        delay=AdaptiveDelay(initial=1.0),
     )
 
     processed = load_processed_instagram()
@@ -236,7 +220,6 @@ async def main(url: Optional[str] = None):
         await client.start(phone=TELEGRAM_PHONE)
         logger.info("✅ Connected to Telegram")
 
-        # Mode 1: Process single URL from user
         if url:
             logger.info(f"📌 Single URL mode: {url}")
             success = await process_instagram_url(url, client, ai_chain, downloader)
@@ -249,10 +232,8 @@ async def main(url: Optional[str] = None):
                 logger.error("❌ Failed to process video")
             return
 
-        # Mode 2: Monitor channel for Instagram links
         logger.info(f"📡 Channel monitoring mode: {INSTAGRAM_SOURCE_CHANNEL}")
 
-        # Get source channel
         try:
             entity = await client.get_entity(INSTAGRAM_SOURCE_CHANNEL)
             logger.info(f"✅ Found channel: {entity.title if hasattr(entity, 'title') else INSTAGRAM_SOURCE_CHANNEL}")
@@ -260,7 +241,6 @@ async def main(url: Optional[str] = None):
             logger.error(f"❌ Channel not found: {INSTAGRAM_SOURCE_CHANNEL} ({e})")
             return
 
-        # Fetch recent messages
         count = 0
         async for message in client.iter_messages(entity, limit=100):
             if not message.text:
@@ -277,10 +257,8 @@ async def main(url: Optional[str] = None):
                     count += 1
                     processed_urls.add(url)
 
-        # Save state
         processed["urls"] = list(processed_urls)
         save_processed_instagram(processed)
-
         logger.info(f"✅ Finished. Processed {count} new videos")
 
 
@@ -290,10 +268,9 @@ if __name__ == "__main__":
     url = None
     if len(sys.argv) > 1:
         url = sys.argv[1]
-        # Validate it's an Instagram URL
         if not extract_instagram_urls(url):
             print("❌ Invalid Instagram URL. Usage:")
-            print("  python instagram_agent.py                                    # Monitor channel")
+            print("  python instagram_agent.py                                      # Monitor channel")
             print("  python instagram_agent.py https://www.instagram.com/p/ABC123  # Download single URL")
             sys.exit(1)
 
