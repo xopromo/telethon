@@ -1,12 +1,1 @@
-.env
-.env.local
-*.session
-*.session-journal
-__pycache__/
-*.py[cod]
-*$py.class
-.venv/
-venv/
-.idea/
-.vscode/
-*.log
+instagram_cookies.txt
