@@ -11,6 +11,8 @@ import logging
 import os
 import json
 import re
+import random
+import time
 from pathlib import Path
 from typing import Optional
 from telethon import TelegramClient
@@ -31,10 +33,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 # Configuration
-INSTAGRAM_SOURCE_CHANNEL = "instagram"  # Channel/username to monitor for Instagram links
+INSTAGRAM_SOURCE_CHANNEL = "instagram"
 INSTAGRAM_OUTPUT_DIR = "/tmp/instagram_downloads"
 PROCESSED_INSTAGRAM_FILE = "processed_instagram.json"
-MAX_VIDEO_SIZE_MB = 2000  # Telegram limit is 4GB, but be conservative
+MAX_VIDEO_SIZE_MB = 2000
+DELAY_BETWEEN_VIDEOS = (120, 300)  # Random delay 2-5 minutes between videos (avoid Instagram ban)
 
 # AI Prompt
 INSTAGRAM_REWRITE_PROMPT = """Ты — редактор моего канала в Telegram.
@@ -122,8 +125,17 @@ async def get_instagram_info(url: str, downloader: InstagramDownloader) -> Optio
             logger.info(f"✅ Got Instagram info: {info.get('title', 'Unknown')}")
             return info
     except Exception as e:
+        if "429" in str(e):
+            logger.warning(f"⚠️  Rate limit hit (429). Instagram is rate-limiting.")
         logger.error(f"❌ Failed to get info for {url}: {e}")
     return None
+
+
+async def safe_delay_before_download():
+    """Random delay to avoid Instagram rate limiting"""
+    delay = random.randint(*DELAY_BETWEEN_VIDEOS)
+    logger.info(f"⏸️  Waiting {delay}s before next video (avoid Instagram ban)...")
+    await asyncio.sleep(delay)
 
 
 async def rewrite_instagram_description(
@@ -276,6 +288,9 @@ async def main(url: Optional[str] = None):
                 if success:
                     count += 1
                     processed_urls.add(url)
+                    # Delay before next video (avoid Instagram rate limiting)
+                    if count < 10:  # Don't delay after last video
+                        await safe_delay_before_download()
 
         # Save state
         processed["urls"] = list(processed_urls)
