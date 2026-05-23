@@ -264,7 +264,8 @@
 
             try {
                 // Send request to Vercel function
-                const response = await fetch('/api/create-issue', {
+                const apiUrl = 'https://telethon-eujrswa1b-xopromo-s-projects.vercel.app/api/create-issue';
+                const response = await fetch(apiUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
