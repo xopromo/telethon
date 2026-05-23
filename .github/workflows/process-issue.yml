@@ -1,0 +1,132 @@
+name: Process Reel Download Issue
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract URL from issue
+        id: extract
+        run: |
+          BODY="${{ github.event.issue.body }}"
+          echo "Issue body: $BODY"
+
+          # Extract Instagram URL from body
+          URL=$(echo "$BODY" | grep -oP 'https://www\.instagram\.com/[^\s]+' | head -1)
+
+          if [ -z "$URL" ]; then
+            echo "❌ No Instagram URL found"
+            exit 1
+          fi
+
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "Found URL: $URL"
+
+      - name: Check rate limit
+        id: limit
+        run: python check_reel_limit.py || echo "limit_reached=true" >> $GITHUB_OUTPUT
+
+      - name: Set up Python
+        if: steps.limit.outputs.limit_reached != 'true'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        if: steps.limit.outputs.limit_reached != 'true'
+        run: pip install yt-dlp
+
+      - name: Setup Instagram cookies
+        if: steps.limit.outputs.limit_reached != 'true'
+        run: |
+          if [ -n "${{ secrets.INSTAGRAM_COOKIES }}" ]; then
+            echo "${{ secrets.INSTAGRAM_COOKIES }}" > instagram_cookies.txt
+            echo "✅ Cookies loaded"
+          fi
+
+      - name: Create downloads directory
+        if: steps.limit.outputs.limit_reached != 'true'
+        run: mkdir -p downloads
+
+      - name: Download reel
+        if: steps.limit.outputs.limit_reached != 'true'
+        id: download
+        run: |
+          URL="${{ steps.extract.outputs.url }}"
+
+          if [ -f instagram_cookies.txt ]; then
+            yt-dlp --cookies instagram_cookies.txt -o "downloads/%(title)s.%(ext)s" "$URL"
+          else
+            yt-dlp -o "downloads/%(title)s.%(ext)s" "$URL"
+          fi
+
+          if [ -f downloads/* ]; then
+            echo "success=true" >> $GITHUB_OUTPUT
+            FILENAME=$(ls -1 downloads/ | head -1)
+            echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment on issue (success)
+        if: steps.download.outputs.success == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ **Видео скачано!**\n\nФайл: `${{ steps.download.outputs.filename }}`\n\nСкачай его из Artifacts вкладки выше ⬆️'
+            })
+
+      - name: Comment on issue (rate limit)
+        if: steps.limit.outputs.limit_reached == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ **Лимит исчерпан на сегодня (2 в сутки)**\n\nПопробуй завтра! 🌅'
+            })
+
+      - name: Comment on issue (error)
+        if: failure() && steps.limit.outputs.limit_reached != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ **Ошибка при скачивании**\n\nПроверь:\n- Корректна ли ссылка?\n- Видео доступно?\n- Попробуй позже'
+            })
+
+      - name: Upload artifact
+        if: steps.download.outputs.success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: reel-${{ github.event.issue.number }}
+          path: downloads/
+          retention-days: 7
+
+      - name: Update rate limit
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add rate_limiter.json
+          git diff --staged --quiet || git commit -m "Update rate limit from issue #${{ github.event.issue.number }} [skip ci]"
+          git push || true

@@ -244,7 +244,7 @@
             }
         }
 
-        form.addEventListener('submit', async (e) => {
+        form.addEventListener('submit', (e) => {
             e.preventDefault();
 
             const url = urlInput.value.trim();
@@ -258,54 +258,33 @@
                 return;
             }
 
-            loading.style.display = 'block';
-            submitBtn.disabled = true;
-            message.style.display = 'none';
+            // Create GitHub Issue with pre-filled content
+            const title = `Download Reel: ${url.split('/').slice(-2, -1)[0]}`;
+            const body = `**Instagram URL:**\n${url}\n\n_This issue will be processed automatically by the workflow._`;
 
-            try {
-                // Получить текущую очередь
-                const queueResponse = await fetch('https://api.github.com/repos/xopromo/telethon/contents/download_queue.json');
-                const queueData = await queueResponse.json();
+            const issueUrl = `https://github.com/xopromo/telethon/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}&labels=reel-download`;
 
-                let queue = JSON.parse(atob(queueData.content));
-                queue.queue.push({
-                    url: url,
-                    timestamp: new Date().toISOString(),
-                    status: 'pending'
-                });
-                queue.last_update = new Date().toISOString();
+            showMessage('✅ Нажми кнопку ниже чтобы создать Issue (откроется GitHub)', 'info');
 
-                // Обновить очередь в репо
-                const updateResponse = await fetch('https://api.github.com/repos/xopromo/telethon/contents/download_queue.json', {
-                    method: 'PUT',
-                    headers: {
-                        'Accept': 'application/vnd.github+json',
-                        'Authorization': 'Bearer ' + prompt('GitHub Token для добавления в очередь:'),
-                        'X-GitHub-Api-Version': '2022-11-28'
-                    },
-                    body: JSON.stringify({
-                        message: `Add to queue: ${url}`,
-                        content: btoa(JSON.stringify(queue, null, 2)),
-                        sha: queueData.sha
-                    })
-                });
+            // Show button to create issue
+            const createBtn = document.createElement('a');
+            createBtn.href = issueUrl;
+            createBtn.target = '_blank';
+            createBtn.className = 'btn-create-issue';
+            createBtn.textContent = '➜ Создать Issue на GitHub';
+            createBtn.style.cssText = `
+                display: inline-block;
+                margin-top: 10px;
+                padding: 10px 20px;
+                background: #28a745;
+                color: white;
+                border-radius: 6px;
+                text-decoration: none;
+                font-weight: 600;
+            `;
 
-                if (updateResponse.ok) {
-                    showMessage('✅ Ссылка добавлена в очередь! Видео скачается в течение минуты 🚀', 'success');
-                    urlInput.value = '';
-                    checkLimit();
-                    setTimeout(() => {
-                        window.open('https://github.com/xopromo/telethon/actions', '_blank');
-                    }, 2000);
-                } else {
-                    showMessage('❌ Ошибка при добавлении. Попробуй позже.', 'error');
-                }
-            } catch (error) {
-                showMessage('❌ Ошибка: ' + error.message, 'error');
-            } finally {
-                loading.style.display = 'none';
-                submitBtn.disabled = false;
-            }
+            message.appendChild(createBtn);
+            urlInput.value = '';
         });
 
         function showMessage(text, type) {
