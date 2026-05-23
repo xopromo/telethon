@@ -244,7 +244,7 @@
             }
         }
 
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const url = urlInput.value.trim();
@@ -258,33 +258,40 @@
                 return;
             }
 
-            // Create GitHub Issue with pre-filled content
-            const title = `Download Reel: ${url.split('/').slice(-2, -1)[0]}`;
-            const body = `**Instagram URL:**\n${url}\n\n_This issue will be processed automatically by the workflow._`;
+            loading.style.display = 'block';
+            submitBtn.disabled = true;
+            message.style.display = 'none';
 
-            const issueUrl = `https://github.com/xopromo/telethon/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}&labels=reel-download`;
+            try {
+                // Send request to Vercel function
+                const response = await fetch('/api/create-issue', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ url })
+                });
 
-            showMessage('✅ Нажми кнопку ниже чтобы создать Issue (откроется GitHub)', 'info');
+                const data = await response.json();
 
-            // Show button to create issue
-            const createBtn = document.createElement('a');
-            createBtn.href = issueUrl;
-            createBtn.target = '_blank';
-            createBtn.className = 'btn-create-issue';
-            createBtn.textContent = '➜ Создать Issue на GitHub';
-            createBtn.style.cssText = `
-                display: inline-block;
-                margin-top: 10px;
-                padding: 10px 20px;
-                background: #28a745;
-                color: white;
-                border-radius: 6px;
-                text-decoration: none;
-                font-weight: 600;
-            `;
+                if (data.success) {
+                    showMessage(`✅ Issue создана! GitHub Actions начал скачивать видео 🚀\n\nЗатем можешь посмотреть статус в репо или артефактах.`, 'success');
+                    urlInput.value = '';
+                    checkLimit();
 
-            message.appendChild(createBtn);
-            urlInput.value = '';
+                    // Open issue in new tab (optional)
+                    setTimeout(() => {
+                        window.open(data.issue_url, '_blank');
+                    }, 1500);
+                } else {
+                    showMessage(`❌ Ошибка: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showMessage(`❌ Ошибка: ${error.message}`, 'error');
+            } finally {
+                loading.style.display = 'none';
+                submitBtn.disabled = false;
+            }
         });
 
         function showMessage(text, type) {
