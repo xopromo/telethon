@@ -81,9 +81,9 @@ class InstagramDownloader:
 
 
 def setup_cookies():
-    """Setup Instagram cookies from instagram_cookies.json if available"""
-    cookies_file = "instagram_cookies.json"
-    if os.path.exists(cookies_file):
+    """Setup Instagram cookies from instagram_cookies.txt (Netscape format)"""
+    cookies_file = "instagram_cookies.txt"
+    if os.path.exists(cookies_file) and os.path.getsize(cookies_file) > 100:
         return f"--cookies {cookies_file}"
     return "--cookies-from-browser chrome"
 
