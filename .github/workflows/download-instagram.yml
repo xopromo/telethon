@@ -1,0 +1,64 @@
+name: 📥 Download Instagram Video
+
+on:
+  workflow_dispatch:
+    inputs:
+      instagram_url:
+        description: 'Instagram video URL'
+        required: true
+        type: string
+        default: 'https://www.instagram.com/p/'
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -q yt-dlp telethon mistralai google-generativeai python-dotenv
+
+      - name: Validate URL
+        run: |
+          if [[ ! "${{ inputs.instagram_url }}" =~ instagram.com ]]; then
+            echo "❌ Invalid Instagram URL"
+            exit 1
+          fi
+          echo "✅ URL valid: ${{ inputs.instagram_url }}"
+
+      - name: Download and process Instagram video
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_PHONE: ${{ secrets.TELEGRAM_PHONE }}
+          SESSION_NAME: instagram_session
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+        run: |
+          python instagram_agent.py "${{ inputs.instagram_url }}"
+
+      - name: Update processed URLs log
+        if: always()
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "Instagram Downloader Bot"
+          git add processed_instagram.json
+          git commit -m "Auto: Download from ${{ inputs.instagram_url }}" --allow-empty
+          git push || echo "Nothing to push"
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "✅ Video downloaded and sent to Saved Messages!"
+          echo "📹 URL: ${{ inputs.instagram_url }}"
