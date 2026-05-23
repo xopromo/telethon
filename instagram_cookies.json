@@ -1,0 +1,14 @@
+[
+  {
+    "domain": ".instagram.com",
+    "name": "sessionid",
+    "value": "PASTE_YOUR_COOKIES_HERE",
+    "path": "/",
+    "expires": 9999999999,
+    "size": 0,
+    "httpOnly": true,
+    "secure": true,
+    "session": false,
+    "sameSite": "Lax"
+  }
+]

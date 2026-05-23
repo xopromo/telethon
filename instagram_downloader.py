@@ -4,6 +4,7 @@
 import subprocess
 import json
 import os
+import os
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -37,17 +38,24 @@ class InstagramDownloader:
             if filename:
                 output_template = f"{self.output_dir}/{filename}.%(ext)s"
 
+            cookies_arg = setup_cookies()
+            cookies_flag = cookies_arg.split()[0]
+            cookies_value = cookies_arg.split()[1] if len(cookies_arg.split()) > 1 else "chrome"
+
+            cmd = [
+                "yt-dlp",
+                cookies_flag,
+                cookies_value,
+                "-f", "best",
+                "-o", output_template,
+                url,
+            ]
+
             result = subprocess.run(
-                [
-                    "yt-dlp",
-                    "--cookies-from-browser", "chrome",  # Use saved browser cookies
-                    "-f", "best",  # Best quality
-                    "-o", output_template,
-                    url,
-                ],
+                cmd,
                 capture_output=True,
                 text=True,
-                timeout=300,  # 5 min timeout
+                timeout=300,
             )
 
             if result.returncode == 0:
@@ -66,11 +74,18 @@ class InstagramDownloader:
         if not self.download(url):
             return None
 
-        # Find downloaded file
         files = list(self.output_dir.glob("*"))
         if files:
             return str(files[-1])
         return None
+
+
+def setup_cookies():
+    """Setup Instagram cookies from instagram_cookies.json if available"""
+    cookies_file = "instagram_cookies.json"
+    if os.path.exists(cookies_file):
+        return f"--cookies {cookies_file}"
+    return "--cookies-from-browser chrome"
 
 
 # Quick test
