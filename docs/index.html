@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎬 Instagram Reel Downloader</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #333;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .message {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            display: none;
+        }
+
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+        }
+
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+
+        .message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            display: block;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 15px;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .limit-info {
+            background: #f0f4ff;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: #333;
+            border-left: 4px solid #667eea;
+        }
+
+        .limit-bar {
+            background: #e0e0e0;
+            height: 6px;
+            border-radius: 3px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+
+        .limit-fill {
+            background: #667eea;
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Reel Downloader</h1>
+        <p class="subtitle">Скачай Instagram reel в один клик</p>
+
+        <div class="limit-info">
+            <div id="limitText">Загрузка информации о лимите...</div>
+            <div class="limit-bar">
+                <div class="limit-fill" id="limitFill"></div>
+            </div>
+        </div>
+
+        <form id="downloadForm">
+            <div class="form-group">
+                <label for="url">🔗 Instagram ссылка:</label>
+                <input
+                    type="text"
+                    id="url"
+                    placeholder="https://www.instagram.com/reel/..."
+                    required
+                >
+            </div>
+
+            <button type="submit" id="submitBtn">⬇️ Скачать</button>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 10px; color: #666;">Загружаю видео...</p>
+            </div>
+
+            <div id="message" class="message"></div>
+        </form>
+    </div>
+
+    <script>
+        const form = document.getElementById('downloadForm');
+        const urlInput = document.getElementById('url');
+        const submitBtn = document.getElementById('submitBtn');
+        const loading = document.getElementById('loading');
+        const message = document.getElementById('message');
+        const limitText = document.getElementById('limitText');
+        const limitFill = document.getElementById('limitFill');
+
+        // Проверить лимит при загрузке страницы
+        checkLimit();
+
+        // Обновлять лимит каждые 30 секунд
+        setInterval(checkLimit, 30000);
+
+        async function checkLimit() {
+            try {
+                const response = await fetch('https://api.github.com/repos/xopromo/telethon/contents/rate_limiter.json');
+                const data = await response.json();
+
+                if (response.ok && data.content) {
+                    const limiterData = JSON.parse(atob(data.content));
+                    const today = new Date().toISOString().split('T')[0];
+                    const todayCount = limiterData[today] || 0;
+                    const remaining = Math.max(0, 2 - todayCount);
+
+                    limitText.textContent = `📊 Скачиваний сегодня: ${todayCount}/2 (осталось: ${remaining})`;
+                    limitFill.style.width = `${(todayCount / 2) * 100}%`;
+
+                    if (remaining === 0) {
+                        submitBtn.disabled = true;
+                        submitBtn.textContent = '❌ Лимит исчерпан (вернись завтра)';
+                    } else {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = '⬇️ Скачать';
+                    }
+                }
+            } catch (error) {
+                console.log('Не удалось загрузить лимит');
+            }
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const url = urlInput.value.trim();
+            if (!url.includes('instagram.com')) {
+                showMessage('❌ Вставь ссылку на Instagram!', 'error');
+                return;
+            }
+
+            if (submitBtn.disabled) {
+                showMessage('❌ Лимит исчерпан на сегодня', 'error');
+                return;
+            }
+
+            loading.style.display = 'block';
+            submitBtn.disabled = true;
+            message.style.display = 'none';
+
+            try {
+                // Запустить GitHub Actions workflow
+                const response = await fetch('https://api.github.com/repos/xopromo/telethon/actions/workflows/download-reel.yml/dispatches', {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/vnd.github+json',
+                        'Authorization': 'Bearer ' + prompt('GitHub Token:'),
+                        'X-GitHub-Api-Version': '2022-11-28'
+                    },
+                    body: JSON.stringify({
+                        ref: 'main',
+                        inputs: {
+                            url: url
+                        }
+                    })
+                });
+
+                if (response.status === 204) {
+                    showMessage('✅ Видео загружается! Проверь Actions вкладку на GitHub', 'success');
+                    urlInput.value = '';
+                    checkLimit();
+                } else {
+                    showMessage('❌ Ошибка при запуске. Попробуй позже.', 'error');
+                }
+            } catch (error) {
+                showMessage('❌ Ошибка: ' + error.message, 'error');
+            } finally {
+                loading.style.display = 'none';
+                submitBtn.disabled = false;
+            }
+        });
+
+        function showMessage(text, type) {
+            message.textContent = text;
+            message.className = 'message ' + type;
+        }
+    </script>
+</body>
+</html>
