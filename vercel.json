@@ -1,11 +1,7 @@
 {
-  "buildCommand": "echo 'No build needed'",
+  "buildCommand": "echo 'Static site with serverless functions'",
   "outputDirectory": "docs",
-  "functions": {
-    "api/**/*.js": {
-      "runtime": "nodejs18.x"
-    }
-  },
+  "framework": "static",
   "rewrites": [
     {
       "source": "/api/:path*",
@@ -13,3 +9,4 @@
     }
   ]
 }
+
