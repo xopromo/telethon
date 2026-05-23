@@ -226,7 +226,7 @@ async def main(url: Optional[str] = None):
             "gemini": GEMINI_API_KEY,
             "cerebras": CEREBRAS_API_KEY,
         },
-        delay=AdaptiveDelay(initial_delay=1.0),
+        delay=AdaptiveDelay(initial=1.0),
     )
 
     processed = load_processed_instagram()
