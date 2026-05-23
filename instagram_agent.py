@@ -122,17 +122,17 @@ async def get_instagram_info(url: str, downloader: InstagramDownloader) -> Optio
 
 
 async def rewrite_instagram_description(
-    title: str, uploader: str, ai_chain: AIProviderChain
+    title: str, uploader: str, ai_chain: AIProviderChain, delay: AdaptiveDelay
 ) -> Optional[str]:
     input_text = f"{title} (by {uploader})"
     prompt = INSTAGRAM_REWRITE_PROMPT.format(text=input_text)
 
     try:
-        result = await ai_chain.call(prompt)
-        if result and result.upper() != "SKIP":
+        result = await ai_chain.get_response(prompt, [], delay)
+        if result and result.strip().upper() != "SKIP":
             logger.info(f"✅ AI rewrite done")
             return clean_text(result)
-        elif result and result.upper() == "SKIP":
+        else:
             logger.info("⏭️ Skipped by AI (likely ad)")
             return None
     except Exception as e:
@@ -159,6 +159,7 @@ async def process_instagram_url(
     url: str,
     client: TelegramClient,
     ai_chain: AIProviderChain,
+    delay: AdaptiveDelay,
     downloader: InstagramDownloader,
 ) -> bool:
     logger.info(f"Processing: {url}")
@@ -172,7 +173,7 @@ async def process_instagram_url(
     uploader = info.get("uploader", "Unknown")
     duration = info.get("duration", 0)
 
-    rewritten = await rewrite_instagram_description(title, uploader, ai_chain)
+    rewritten = await rewrite_instagram_description(title, uploader, ai_chain, delay)
     if not rewritten:
         logger.warning(f"⏭️ Skipped by AI filter")
         return False
@@ -204,14 +205,14 @@ async def main(url: Optional[str] = None):
     logger.info("🚀 Instagram Agent starting...")
 
     downloader = InstagramDownloader(output_dir=INSTAGRAM_OUTPUT_DIR)
-    ai_chain = AIProviderChain(
-        api_keys={
-            "mistral": MISTRAL_API_KEY,
-            "gemini": GEMINI_API_KEY,
-            "cerebras": CEREBRAS_API_KEY,
-        },
-        delay=AdaptiveDelay(initial=1.0),
-    )
+
+    providers_config = [
+        ("mistral", MISTRAL_API_KEY),
+        ("gemini", GEMINI_API_KEY),
+        ("cerebras", CEREBRAS_API_KEY),
+    ]
+    ai_chain = AIProviderChain(providers_config, "")
+    delay = AdaptiveDelay(initial=1.0)
 
     processed = load_processed_instagram()
     processed_urls = set(processed.get("urls", []))
@@ -222,7 +223,7 @@ async def main(url: Optional[str] = None):
 
         if url:
             logger.info(f"📌 Single URL mode: {url}")
-            success = await process_instagram_url(url, client, ai_chain, downloader)
+            success = await process_instagram_url(url, client, ai_chain, delay, downloader)
             if success:
                 processed_urls.add(url)
                 processed["urls"] = list(processed_urls)
@@ -252,7 +253,7 @@ async def main(url: Optional[str] = None):
                     logger.info(f"⏭️ Already processed: {url}")
                     continue
 
-                success = await process_instagram_url(url, client, ai_chain, downloader)
+                success = await process_instagram_url(url, client, ai_chain, delay, downloader)
                 if success:
                     count += 1
                     processed_urls.add(url)
