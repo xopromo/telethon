@@ -1,5 +1,13 @@
 {
-  "buildCommand": "echo 'Build complete'",
-  "installCommand": "pip install flask==3.0.0 requests==2.32.0",
-  "outputDirectory": "docs"
+  "outputDirectory": "docs",
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type" }
+      ]
+    }
+  ]
 }
