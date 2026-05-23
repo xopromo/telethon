@@ -4,15 +4,17 @@ Personal Telegram agent that monitors subscribed channels, rewrites posts via AI
 
 ## Architecture
 
-Three independent agents:
+Four independent agents:
 - **content_agent.py** — manual run, fetches latest posts per channel, auto-detects channel topic, rewrites singles contextually, merges similar into mini-digests
 - **digest_agent.py** — runs every 6h via cron, collects posts from last 24h, writes full articles for groups of 3+
 - **insights_agent.py** — CLI tool, reads historical posts from a channel/topic (newest→oldest in batches), filters valuable insights via AI, publishes to a private group
+- **instagram_agent.py** — manual run or scheduled every 6h, monitors a Telegram channel for Instagram links, downloads videos via yt-dlp, rewrites descriptions via AI, publishes to Saved Messages
 
 Shared helpers:
 - **ai_providers.py** — AIProviderChain (failover) + AdaptiveDelay
 - **config.py** — loads .env variables
 - **session.py** — one-time local auth to generate SESSION_BASE64
+- **instagram_downloader.py** — yt-dlp wrapper for Instagram video metadata extraction and downloads (used by instagram_agent.py)
 
 ## AI Providers
 
@@ -50,7 +52,8 @@ Each published item is **two messages**:
 
 - `.github/workflows/telegram-bot.yml` — `workflow_dispatch` only, runs content_agent.py
 - `.github/workflows/digest.yml` — `schedule: cron '0 */6 * * *'` + `workflow_dispatch`, runs digest_agent.py
-- Both workflows: `permissions: contents: write`, restore session from SECRET, save tracking JSONs back to repo after run
+- `.github/workflows/instagram-agent.yml` — `schedule: cron '0 */6 * * *'` + `workflow_dispatch`, runs instagram_agent.py
+- All workflows: `permissions: contents: write`, restore session from SECRET, save tracking JSONs back to repo after run
 - Branch: `claude/telethon-telegram-ai-agent-BEWcw`
 
 ## Key constants
@@ -63,6 +66,26 @@ Each published item is **two messages**:
 | MIN_POSTS_FOR_DIGEST | 3 | digest_agent.py |
 | DEFAULT_BATCH | 1000 | insights_agent.py |
 | FILTER_CHUNK | 50 | insights_agent.py |
+| INSTAGRAM_SOURCE_CHANNEL | `"instagram"` | instagram_agent.py |
+| MAX_VIDEO_SIZE_MB | 2000 | instagram_agent.py |
+
+## instagram_agent.py
+
+Downloads Instagram videos from monitored Telegram channel, rewrites descriptions via AI, publishes to Saved Messages.
+
+Setup:
+1. Change `INSTAGRAM_SOURCE_CHANNEL` to your target Telegram channel/username
+2. Ensure yt-dlp can access Instagram (via Chrome/Firefox cookies)
+3. Run manually or schedule via GitHub Actions
+
+Usage:
+```
+python instagram_agent.py
+```
+
+Output: `processed_instagram.json` tracks downloaded URLs (prevents duplicates)
+
+See `INSTAGRAM_AGENT_USAGE.md` for detailed config and troubleshooting.
 
 ## insights_agent.py
 
