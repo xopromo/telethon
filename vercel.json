@@ -1,7 +1,6 @@
 {
   "buildCommand": "echo 'Static site with serverless functions'",
   "outputDirectory": "docs",
-  "framework": "static",
   "rewrites": [
     {
       "source": "/api/:path*",
