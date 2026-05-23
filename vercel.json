@@ -1,4 +1,5 @@
 {
-  "buildCommand": "echo 'Static site with serverless functions'",
+  "buildCommand": "echo 'Build complete'",
+  "installCommand": "pip install flask==3.0.0 requests==2.32.0",
   "outputDirectory": "docs"
 }
