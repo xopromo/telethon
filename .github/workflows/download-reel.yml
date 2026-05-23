@@ -35,11 +35,27 @@ jobs:
       - name: Create downloads directory
         run: mkdir -p downloads
 
+      - name: Setup Instagram cookies
+        run: |
+          if [ -n "${{ secrets.INSTAGRAM_COOKIES }}" ]; then
+            echo "${{ secrets.INSTAGRAM_COOKIES }}" > instagram_cookies.txt
+            echo "✅ Cookies loaded from GitHub Secret"
+          else
+            echo "⚠️  No cookies found - will try without authentication"
+          fi
+
       - name: Download reel
         run: |
-          yt-dlp \
-            -o "downloads/%(title)s.%(ext)s" \
-            "${{ inputs.url }}"
+          if [ -f instagram_cookies.txt ]; then
+            yt-dlp \
+              --cookies instagram_cookies.txt \
+              -o "downloads/%(title)s.%(ext)s" \
+              "${{ inputs.url }}"
+          else
+            yt-dlp \
+              -o "downloads/%(title)s.%(ext)s" \
+              "${{ inputs.url }}"
+          fi
 
       - name: Save rate limit
         if: always()

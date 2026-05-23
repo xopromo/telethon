@@ -4,11 +4,16 @@
 
 ## Как использовать
 
+### Для админа (первый раз):
+1. Добавь Instagram cookies как GitHub Secret
+   - Смотри: `GITHUB_SECRETS_SETUP.md`
+2. Включи GitHub Pages (Settings → Pages)
+
 ### Для пользователя:
 1. Открой: https://xopromo.github.io/telethon/
 2. Вставь ссылку на Instagram reel
 3. Нажми "Скачать"
-4. Видео появится в артефактах GitHub Actions
+4. Видео появится в артефактах GitHub Actions (скачиваемый файл)
 
 ### Лимиты:
 - **2 скачивания в сутки** на все пользователи
