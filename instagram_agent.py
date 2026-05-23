@@ -214,8 +214,8 @@ By: {uploader}
         return False
 
 
-async def main():
-    """Main agent loop"""
+async def main(url: Optional[str] = None):
+    """Main agent: process single URL or monitor channel"""
     logger.info("🚀 Instagram Agent starting...")
 
     # Initialize
@@ -235,6 +235,22 @@ async def main():
     async with TelegramClient(SESSION_NAME, TELEGRAM_API_ID, TELEGRAM_API_HASH) as client:
         await client.start(phone=TELEGRAM_PHONE)
         logger.info("✅ Connected to Telegram")
+
+        # Mode 1: Process single URL from user
+        if url:
+            logger.info(f"📌 Single URL mode: {url}")
+            success = await process_instagram_url(url, client, ai_chain, downloader)
+            if success:
+                processed_urls.add(url)
+                processed["urls"] = list(processed_urls)
+                save_processed_instagram(processed)
+                logger.info("✅ Video processed and saved to Saved Messages")
+            else:
+                logger.error("❌ Failed to process video")
+            return
+
+        # Mode 2: Monitor channel for Instagram links
+        logger.info(f"📡 Channel monitoring mode: {INSTAGRAM_SOURCE_CHANNEL}")
 
         # Get source channel
         try:
@@ -269,4 +285,16 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import sys
+
+    url = None
+    if len(sys.argv) > 1:
+        url = sys.argv[1]
+        # Validate it's an Instagram URL
+        if not extract_instagram_urls(url):
+            print("❌ Invalid Instagram URL. Usage:")
+            print("  python instagram_agent.py                                    # Monitor channel")
+            print("  python instagram_agent.py https://www.instagram.com/p/ABC123  # Download single URL")
+            sys.exit(1)
+
+    asyncio.run(main(url=url))

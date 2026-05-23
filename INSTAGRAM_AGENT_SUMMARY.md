@@ -27,24 +27,34 @@ Telegram Channel → Instagram Links → yt-dlp → AI Rewrite → Saved Message
 
 ---
 
-## 3 шага для начала
+## 2 режима работы
 
-### 1. Выбери источник (Telegram канал)
+### 📌 Режим 1: Скачать одно видео по ссылке (быстро!)
 
-В `instagram_agent.py` измени:
+```bash
+python instagram_agent.py https://www.instagram.com/p/DYpsm93IVGM/
+```
+
+Результат:
+```
+Processing: https://www.instagram.com/p/DYpsm93IVGM/
+✅ Got Instagram info: Video by alex_ponyatov
+✅ AI rewrite done
+✅ Downloaded: /tmp/instagram_downloads/video.mp4 (125.3MB)
+✅ Published to Saved Messages
+✅ Video processed and saved to Saved Messages
+```
+
+Видео сразу отправится в Saved Messages с переписанным описанием!
+
+### 📡 Режим 2: Мониторить Telegram канал (автоматический)
+
+Сначала выбери источник в `instagram_agent.py`:
 ```python
 INSTAGRAM_SOURCE_CHANNEL = "your_channel_name"  # или ID канала
 ```
 
-### 2. Убедись, что yt-dlp может скачивать
-
-yt-dlp использует cookies из браузера. Убедись:
-- ✅ Залогинен в Instagram в Chrome/Firefox
-- ✅ Нет 2FA или отключена
-- ✅ Установлен yt-dlp: `pip install yt-dlp`
-
-### 3. Запусти вручную или через GitHub Actions
-
+Затем запусти без аргументов:
 ```bash
 # Ручной запуск (процессит последние 100 сообщений)
 python instagram_agent.py
@@ -52,6 +62,14 @@ python instagram_agent.py
 # Или через GitHub Actions (каждые 6 часов)
 # Просто push — workflow запустится автоматически
 ```
+
+---
+
+## Требования
+
+- ✅ Залогинен в Instagram в Chrome/Firefox
+- ✅ Нет 2FA или отключена
+- ✅ Установлен yt-dlp: `pip install yt-dlp`
 
 ---
 

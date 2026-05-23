@@ -59,11 +59,10 @@ INSTAGRAM_SOURCE_CHANNEL = "https://t.me/your_channel"
 
 ## Использование
 
-### 1️⃣ Ручной запуск
+### 1️⃣ Быстрый старт: скачать одно видео по ссылке
 
 ```bash
-# Один раз процессить последние 100 сообщений из канала
-python instagram_agent.py
+python instagram_agent.py "https://www.instagram.com/p/DYpsm93IVGM/"
 ```
 
 Вывод:
@@ -73,6 +72,31 @@ Processing: https://www.instagram.com/p/DYpsm93IVGM/
 ✅ AI rewrite done
 ✅ Downloaded: /tmp/instagram_downloads/video.mp4 (125.3MB)
 ✅ Published to Saved Messages
+✅ Video processed and saved to Saved Messages
+```
+
+**Видео сразу отправится в Saved Messages!**
+
+### 2️⃣ Мониторить канал: процессить все новые ссылки
+
+Сначала настрой канал:
+```python
+# instagram_agent.py
+INSTAGRAM_SOURCE_CHANNEL = "your_channel_name"  # или ID
+```
+
+Затем запусти без аргументов:
+```bash
+python instagram_agent.py
+```
+
+Вывод:
+```
+📡 Channel monitoring mode: your_channel_name
+✅ Found channel: Your Channel
+Processing: https://www.instagram.com/p/DYpsm93IVGM/
+✅ Got Instagram info: Video by alex_ponyatov
+...
 ✅ Finished. Processed 5 new videos
 ```
 
@@ -250,7 +274,25 @@ By: Alex Ponyatov
 
 ---
 
-## Примеры настройки
+## Примеры использования
+
+### CLI примеры
+
+```bash
+# Скачать одно видео
+python instagram_agent.py "https://www.instagram.com/p/DYpsm93IVGM/"
+
+# Скачать Reel
+python instagram_agent.py "https://www.instagram.com/reel/ABC123/"
+
+# Мониторить канал (все новые ссылки за последние 100 постов)
+python instagram_agent.py
+
+# С логированием
+python instagram_agent.py "https://www.instagram.com/p/..." 2>&1 | tee download.log
+```
+
+### Примеры настройки
 
 ### Вариант 1: Мониторить приватный канал
 ```python
